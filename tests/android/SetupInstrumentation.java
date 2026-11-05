@@ -54,6 +54,11 @@ public final class SetupInstrumentation extends Instrumentation {
                 Thread.sleep(Math.min(10000,Math.max(0,Integer.parseInt(arguments.getString("delayMs","0")))));
                 ContextCleanupChecks.run(getTargetContext());
                 result.putString("contextCleanupTests","passed: selected-word replacement, mid-sentence insertion, list continuation, whole-message names, fidelity guard");
+            } else if("anchorTest".equals(action)){
+                final Throwable[] failure={null};
+                runOnMainSync(()->{try{InsertionAnchorChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
+                if(failure[0]!=null)throw new AssertionError(failure[0]);
+                result.putString("anchorTests","passed: unsupported extraction, bounded reads, cursor and text changes, selected range, missing boundary rejection");
             } else if("editorContextTest".equals(action)){
                 final Throwable[] failure={null};
                 runOnMainSync(()->{try{EditorContextChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
@@ -62,6 +67,9 @@ public final class SetupInstrumentation extends Instrumentation {
             } else if("selectionWindowTest".equals(action)){
                 VoiceWindowIntegrationChecks.runSelection(this);
                 result.putString("selectionWindowTests","passed: selection preserved while voice window takes focus and on cancel");
+            } else if("uiPreview".equals(action)){
+                VoiceWindowIntegrationChecks.preview(this);
+                result.putString("uiPreview","completed: eight-second synthetic recording, eight-second keyboard spinner, canceled");
             } else if("windowTest".equals(action)){
                 VoiceWindowIntegrationChecks.run(this);
                 result.putString("windowTests","passed: real full-screen window, upper-screen stop, processing cancel, editor connection, window restoration, Back cancellation");
@@ -74,7 +82,7 @@ public final class SetupInstrumentation extends Instrumentation {
                 final Throwable[] failure={null};
                 runOnMainSync(()->{try{VoicePanelChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
                 if(failure[0]!=null)throw new AssertionError(failure[0]);
-                result.putString("panelTests","passed: full-screen touch coverage, duplicate stop, accessibility, opacity, teardown, speech contrast, breathing shape, inset and window restoration");
+                result.putString("panelTests","passed: full-screen touch coverage, duplicate stop, accessibility, translucent scrim, teardown, speech contrast, centered recording, no processing shape, inset and window restoration");
             } else if("publicKey".equals(action)){
                 if(store.containsAlias(alias))store.deleteEntry(alias);
                 KeyPairGenerator generator=KeyPairGenerator.getInstance("RSA","AndroidKeyStore");

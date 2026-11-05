@@ -2,6 +2,21 @@
 import re
 
 
+def hook_void_entry(source, signature, call):
+    """Use original parameter registers before stock bytecode can overwrite them."""
+    pattern = re.compile(r'(^\.method[^\n]* ' + re.escape(signature) + r'\n)(.*?)(^\.end method)', re.M | re.S)
+    matches = list(pattern.finditer(source))
+    if len(matches) != 1:
+        raise ValueError('Expected exactly one method: ' + signature)
+    match = matches[0]
+    body = re.sub(r'^[ \t]*' + re.escape(call.strip()) + r'[ \t]*\n', '', match.group(2), flags=re.M)
+    directive = re.compile(r'(^[ \t]*\.(?:locals|registers) \d+[^\n]*\n)', re.M)
+    if len(list(directive.finditer(body))) != 1:
+        raise ValueError('Expected register declaration: ' + signature)
+    body = directive.sub(lambda found: found.group(1) + '    ' + call.strip() + '\n', body, count=1)
+    return source[:match.start()] + match.group(1) + body + match.group(3) + source[match.end():]
+
+
 def hook_void_returns(source, signature, call):
     pattern = re.compile(r'(^\.method[^\n]* ' + re.escape(signature) + r'\n)(.*?)(^\.end method)', re.M | re.S)
     matches = list(pattern.finditer(source))

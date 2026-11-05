@@ -104,9 +104,18 @@ changed-target detection, partial and prefix-only extract rejection, overflow an
 boundary checks, structural newline preservation, and password exclusion.
 Remove the temporary harness with `adb uninstall org.gboardopenai.test` when done.
 
+`anchorTest` exercises the bounded insertion guard for editors that cannot expose
+their complete message. It covers cursor and selection movement, surrounding edits,
+unavailable reads, and bounded retention without microphone or API access.
+
+`uiPreview` uses the same launch sequence as `windowTest` below. It displays eight
+seconds of synthetic recording over the real QA editor, then eight seconds of the
+keyboard microphone spinner and cancels. It never opens the microphone or API.
+
 `mediaFocusTest` uses the same launch sequence as `windowTest` below. It reports
 whether this IME can obtain audio focus, verifies the lease remains through the
-processing phase, and checks that closing the voice view releases it. It makes no
+processing phase after the full-screen layer closes, and checks that session
+completion releases it. It makes no
 recording or API request. Validate pause/resume behavior separately in the desired
 media apps, including an initially paused player and cancel/error paths.
 

@@ -32,6 +32,32 @@ public final class VoiceWindowIntegrationChecks {
     public static void runSelection(Instrumentation instrumentation) throws Exception {
         VoiceWindowIntegrationChecks check=new VoiceWindowIntegrationChecks(instrumentation);check.selectionCase=true;check.run();
     }
+    public static void preview(Instrumentation instrumentation)throws Exception{
+        VoiceWindowIntegrationChecks check=new VoiceWindowIntegrationChecks(instrumentation);
+        check.awaitTestEditor();
+        try{
+            check.main(check::show);
+            android.util.Log.i("PixelVoicePreview","Recording preview started");
+            for(int frame=0;frame<32;frame++){
+                check.main(()->{
+                    check.requireTestEditor();
+                    VoicePanel panel=(VoicePanel)field(check.session,"panel");
+                    if(panel==null)throw new AssertionError("Recording preview was dismissed");
+                    panel.level(.45f);
+                });
+                SystemClock.sleep(250);
+            }
+            check.main(()->{
+                check.requireTestEditor();
+                if(!((VoiceUiState)field(check.session,"ui")).stop())throw new AssertionError("Preview did not stop");
+                check.call("showProcessing");
+            });
+            android.util.Log.i("PixelVoicePreview","Processing preview started");
+            for(int frame=0;frame<32;frame++){
+                check.main(check::requireTestEditor);SystemClock.sleep(250);
+            }
+        }finally{check.main(()->check.call("cancel"));}
+    }
     private static Object field(Object object,String name)throws Exception{
         Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);
     }
@@ -57,7 +83,20 @@ public final class VoiceWindowIntegrationChecks {
         }finally{down.recycle();up.recycle();}
         SystemClock.sleep(200);
     }
-    private void run()throws Exception{
+    private void longPress()throws Exception{
+        main(this::requireTestEditor);
+        long now=SystemClock.uptimeMillis();
+        MotionEvent down=MotionEvent.obtain(now,now,MotionEvent.ACTION_DOWN,point[0],point[1],0);
+        try{
+            if(!instrumentation.getUiAutomation().injectInputEvent(down,true))throw new AssertionError("Long press down failed");
+            SystemClock.sleep(android.view.ViewConfiguration.getLongPressTimeout()+150);
+            MotionEvent up=MotionEvent.obtain(now,SystemClock.uptimeMillis(),MotionEvent.ACTION_UP,point[0],point[1],0);
+            try{if(!instrumentation.getUiAutomation().injectInputEvent(up,true))throw new AssertionError("Long press up failed");}
+            finally{up.recycle();}
+        }finally{down.recycle();}
+        SystemClock.sleep(250);
+    }
+    private void awaitTestEditor()throws Exception{
         // The caller launches the empty test activity and reselects the IME after instrumentation starts.
         for(int i=0;i<40 && session==null;i++){
             SystemClock.sleep(250);
@@ -70,6 +109,9 @@ public final class VoiceWindowIntegrationChecks {
             });
         }
         if(session==null)throw new AssertionError("QA editor and attached microphone required");
+    }
+    private void run()throws Exception{
+        awaitTestEditor();
         if(selectionCase)SystemClock.sleep(900);
         InputConnection[] connection={null};WindowManager.LayoutParams original=new WindowManager.LayoutParams();View[] surface={null};float[] alpha={0};
         DictationContext[] snapshot={null};
@@ -99,14 +141,35 @@ public final class VoiceWindowIntegrationChecks {
                 if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Full-screen entry changed the editor connection");
             });
             tap(); // This point is above the original keyboard: verifies the patched WMS touch region.
+            SystemClock.sleep(400); // Let the ordinary keyboard finish restoring its bounds.
             main(()->{
                 if(((VoiceUiState)field(session,"ui")).phase()!=VoiceUiState.Phase.PROCESSING)throw new AssertionError("Upper-screen tap did not stop recording");
-                View close=(View)field(session,"closeButton");int[] location=new int[2];close.getLocationOnScreen(location);
-                point[0]=location[0]+close.getWidth()/2f;point[1]=location[1]+close.getHeight()/2f;
+                if(field(session,"overlay")!=null || field(session,"panel")!=null || field(session,"windowState")!=null)
+                    throw new AssertionError("Processing did not dismiss the full-screen voice surface");
+                if(surface[0].getAlpha()!=alpha[0])throw new AssertionError("Processing did not restore the keyboard alpha");
+                View mic=(View)field(session,"button");
+                if(!(Boolean)field(mic,"processing") || mic.getVisibility()!=View.VISIBLE)
+                    throw new AssertionError("Processing spinner is not visible on the keyboard microphone");
+                if(((View)field(session,"nativeMic")).getAlpha()!=0)throw new AssertionError("Native microphone remains behind the spinner");
+                VoiceRuntime.selectionChanged(ime,0,0,0,0);
+                if((Boolean)field(session,"targetChanged"))throw new AssertionError("Unchanged selection invalidated dictation");
+                VoiceRuntime.selectionChanged(ime,0,0,1,1);
+                if(!(Boolean)field(session,"targetChanged"))throw new AssertionError("Selection movement must invalidate pending insertion");
+                if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Processing changed the editor connection");
+                WindowManager.LayoutParams restored=ime.getWindow().getWindow().getAttributes();
+                if(restored.flags!=original.flags || restored.format!=original.format
+                        || (Build.VERSION.SDK_INT>=30 && restored.getFitInsetsTypes()!=original.getFitInsetsTypes()))
+                    throw new AssertionError("Processing did not restore the ordinary IME window");
+                int[] location=new int[2];mic.getLocationOnScreen(location);
+                point[0]=location[0]+mic.getWidth()/2f;point[1]=location[1]+mic.getHeight()/2f;
             });
-            tap();SystemClock.sleep(400);
+            longPress();
             main(()->{
                 if(field(session,"overlay")!=null || surface[0].getAlpha()!=alpha[0])throw new AssertionError("Cancel did not restore keyboard");
+                if(((VoiceUiState)field(session,"ui")).phase()!=VoiceUiState.Phase.IDLE
+                    || (Boolean)field(field(session,"button"),"processing"))throw new AssertionError("Cancel did not clear the microphone spinner");
+                if(((View)field(session,"nativeMic")).getAlpha()!=(Float)field(session,"nativeMicAlpha"))
+                    throw new AssertionError("Cancel did not restore the native microphone alpha");
                 WindowManager.LayoutParams restored=ime.getWindow().getWindow().getAttributes();
                 if(restored.flags!=original.flags || (Build.VERSION.SDK_INT>=30 && restored.getFitInsetsTypes()!=original.getFitInsetsTypes()))throw new AssertionError("Window flags/insets leaked");
                 if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Cancel changed the editor connection");

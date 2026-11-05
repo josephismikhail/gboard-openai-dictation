@@ -4,22 +4,20 @@ package org.gboardopenai;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Path;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Button;
 import java.util.Arrays;
 
-/** Actual microphone levels, contracting into a breathing shape during processing. */
+/** Full-screen translucent recording scrim driven by actual microphone levels. */
 public class VoicePanel extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Path shape = new Path();
     private final float[] levels = new float[49];
     private final int background, accent;
     private VoiceUiState.Phase phase = VoiceUiState.Phase.STARTING;
     private float displayed, target;
-    private long lastFrame, lastSample, processingStarted;
+    private long lastFrame, lastSample;
 
     public VoicePanel(Context context, int background, int accent) {
         super(context);
@@ -29,7 +27,6 @@ public class VoicePanel extends View {
         setPhase(VoiceUiState.Phase.STARTING);
     }
     public void setPhase(VoiceUiState.Phase value) {
-        if (value == VoiceUiState.Phase.PROCESSING && phase != value) processingStarted = frameTime();
         phase = value;
         boolean processing = value == VoiceUiState.Phase.PROCESSING;
         setContentDescription(processing ? "Processing dictation" : "Listening. Tap anywhere to finish dictation");
@@ -68,43 +65,21 @@ public class VoicePanel extends View {
         paint.setColor(accent); paint.setStyle(Paint.Style.STROKE); paint.setStrokeCap(Paint.Cap.ROUND);
         boolean animate = android.animation.ValueAnimator.areAnimatorsEnabled();
         float width = Math.max(d,Math.min(346*d, getWidth() - 40*d));
-        if (phase == VoiceUiState.Phase.PROCESSING) {
-            float transition = animate ? Math.min(1, (now-processingStarted)/450f) : 1;
-            transition = transition*transition*(3-2*transition);
-            if (transition<1) {
-                paint.setStrokeWidth((1.2f+2f*displayed)*d);
-                paint.setAlpha((int)((65+190*displayed)*(1-transition)));
-                for (int i=0; i<levels.length; i++) {
-                    float contracted=width*(1-.8f*transition);
-                    float x=cx-contracted/2+i*contracted/(levels.length-1);
-                    float height=speechHeight(i,d)*(1-transition);
-                    canvas.drawLine(x,cy-height/2,x,cy+height/2,paint);
-                }
-            }
-            double seconds=animate?(now-processingStarted)/1000.0:0;
-            float breath=(float)(.5+.5*Math.sin(seconds*3.2));
-            float radius=Math.min((60+5*breath)*d,Math.min(getWidth(),getHeight())*.23f)*(.65f+.35f*transition);
-            paint.setStyle(Paint.Style.FILL);
-            // Indeterminate feedback: completion is driven only by the actual result callback.
-            drawShape(canvas,cx,cy,radius*1.22f,3.5f,0,(int)(12*transition));
-            drawShape(canvas,cx,cy,radius,3.5f+(float)Math.sin(seconds*1.4)*.6f,
-                (float)Math.sin(seconds*.9)*.1f,(int)(220*transition));
+        if (phase == VoiceUiState.Phase.PROCESSING) return;
+        float dt = lastFrame == 0 ? .016f : Math.min(.1f, (now - lastFrame) / 1000f);
+        float desired = now - lastSample > 220 ? 0 : target;
+        displayed += (desired - displayed) * (1 - (float)Math.exp(-dt * (desired > displayed ? 32 : 14)));
+        if (displayed < .02f) {
+            paint.setStrokeWidth(d); paint.setAlpha(128);
+            canvas.drawLine(cx-width/2, cy, cx+width/2, cy, paint);
         } else {
-            float dt = lastFrame == 0 ? .016f : Math.min(.1f, (now - lastFrame) / 1000f);
-            float desired = now - lastSample > 220 ? 0 : target;
-            displayed += (desired - displayed) * (1 - (float)Math.exp(-dt * (desired > displayed ? 32 : 14)));
-            if (displayed < .02f) {
-                paint.setStrokeWidth(d); paint.setAlpha(65);
-                canvas.drawLine(cx-width/2, cy, cx+width/2, cy, paint);
-            } else {
-                paint.setStrokeWidth((1.2f + 2f * displayed)*d);
-                paint.setAlpha((int)(65 + 190 * displayed));
-                for (int i = 0; i < levels.length; i++) {
-                    float position = i / (float)(levels.length - 1);
-                    float height = speechHeight(i,d);
-                    float x = cx - width/2 + position * width;
-                    canvas.drawLine(x, cy - height/2, x, cy + height/2, paint);
-                }
+            paint.setStrokeWidth((1.2f + 2f * displayed)*d);
+            paint.setAlpha((int)(190 + 65 * displayed));
+            for (int i = 0; i < levels.length; i++) {
+                float position = i / (float)(levels.length - 1);
+                float height = speechHeight(i,d);
+                float x = cx - width/2 + position * width;
+                canvas.drawLine(x, cy - height/2, x, cy + height/2, paint);
             }
         }
         lastFrame = now;
@@ -119,17 +94,5 @@ public class VoicePanel extends View {
         float energy=displayed*(.55f+.45f*history);
         float maximumHeight=Math.min(300*density,getHeight()*.36f);
         return density+maximumHeight*taper*energy;
-    }
-    private void drawShape(Canvas canvas,float cx,float cy,float radius,float exponent,float rotation,int alpha){
-        shape.reset();
-        float cosRotation=(float)Math.cos(rotation),sinRotation=(float)Math.sin(rotation);
-        for(int i=0;i<=96;i++){
-            double angle=i*Math.PI*2/96,cos=Math.cos(angle),sin=Math.sin(angle);
-            float x=radius*(float)(Math.signum(cos)*Math.pow(Math.abs(cos),2/exponent));
-            float y=radius*(float)(Math.signum(sin)*Math.pow(Math.abs(sin),2/exponent));
-            float px=cx+x*cosRotation-y*sinRotation,py=cy+x*sinRotation+y*cosRotation;
-            if(i==0)shape.moveTo(px,py);else shape.lineTo(px,py);
-        }
-        shape.close();paint.setAlpha(alpha);canvas.drawPath(shape,paint);
     }
 }

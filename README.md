@@ -102,23 +102,23 @@ and is not repopulated with the stored key. App backups are disabled for this
 independently built package. Do not commit keys, recordings, personal vocabulary,
 private preferences, signing keys, or your base APKs.
 
-During recording, the voice view fills the screen. Its
-waveform reflects the microphone level and settles during silence; silence does
-not stop recording. Speech produces large, bright peaks above a dim, flat quiet
-line. After you tap the view, the waveform contracts into a large, gently
-breathing rounded shape until the result is inserted and the regular keyboard
-returns. This animation indicates activity, not estimated progress. The view
-follows the keyboard background with a contrasting neutral signal and adds no
-routine toasts. Use the close button, Back, or a long press to cancel.
-Both the recording waveform and the processing shape are centered horizontally
-and vertically in the full-screen view.
+During recording, a translucent dimming layer fills the screen while the app and
+keyboard remain visible behind it, without blur. Its centered waveform reflects
+the microphone level and settles during silence; silence does not stop recording.
+Speech produces large, bright peaks above a dim, flat quiet line. Tap anywhere on
+the layer to finish. The layer immediately disappears and a spinner replaces the
+keyboard microphone until the result is inserted. The spinner indicates activity,
+not estimated progress, and the ordinary microphone returns on completion.
+Use the close button, Back, or a long press while recording to cancel; long-press
+the spinning microphone to cancel processing. There are no routine status toasts.
 Leaving the input field also cancels and restores
 the keyboard. A ten-minute recording limit prevents an accidentally forgotten
 microphone from running indefinitely. System-disabled animations are respected.
 
 Opening the full-screen voice view requests temporary audio focus so cooperating
-media apps pause their playback. Focus is returned when the view closes, after
-cleanup and insertion or cancellation, allowing the player to resume. The keyboard
+media apps pause their playback. Focus remains held after the dimming layer closes,
+through cleanup and insertion, and is returned on completion or cancellation,
+allowing the player to resume. The keyboard
 does not change media volume or send a blanket Play command. Playback behavior is
 controlled by the media app: some players may ignore focus changes or require a
 manual resume. No additional media or notification access is requested.
@@ -126,9 +126,11 @@ manual resume. No additional media or notification access is requested.
 The full-screen view stays in the keyboard's own window, preserving its connection
 to the original text field. It needs no floating-overlay permission or separate
 recording activity. System navigation remains available; temporary window and
-touch-region and focus changes are restored when dictation ends. While recording
-or processing, the voice window takes focus so the editor's selection handles
-cannot float above it; the selected range is preserved for replacement or cancel.
+touch-region and focus changes are restored when recording stops. While recording,
+the voice window takes focus so the editor's selection handles cannot float above
+it; the selected range is preserved for replacement or cancel. The regular editor
+is visible during processing; changing its message or selection invalidates the
+pending insertion rather than replacing text at a different target.
 
 ## Optional Google Messages shortcut
 
