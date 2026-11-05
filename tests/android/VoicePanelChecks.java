@@ -17,7 +17,7 @@ import org.gboardopenai.VoiceWindowInsets;
 /** Deterministic rendering and touch tests; no microphone or network request. */
 public final class VoicePanelChecks {
     private static final int WIDTH=480, HEIGHT=900, CENTER_Y=HEIGHT/2;
-    private static final int SCRIM=0x99000000;
+    private static final int SCRIM=0xB3000000;
     private static final class Panel extends VoicePanel {
         long clock=1000;
         Panel(Context context){super(context,SCRIM,Color.CYAN);}

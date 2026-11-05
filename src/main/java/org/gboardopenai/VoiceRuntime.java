@@ -92,7 +92,7 @@ public final class VoiceRuntime {
     }
     private static final class Session {
         final InputMethodService ime;
-        VoiceEngine engine; InputConnection editor; MicButton button; View nativeMic;float nativeMicAlpha=1;
+        VoiceEngine engine; InputConnection editor; MicButton button; View nativeMic,processingMic;float nativeMicAlpha=1;
         DictationContext editorContext;
         InsertionAnchor insertionAnchor;boolean targetChanged;
         final VoiceUiState ui = new VoiceUiState();
@@ -147,8 +147,8 @@ public final class VoiceRuntime {
                 android.util.Log.i("PixelVoice","Microphone attached inside keyboard");
             }
             if(nativeMic!=target){
-                if(nativeMic!=null){nativeMic.setAlpha(nativeMicAlpha);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
-                nativeMic=target;nativeMicAlpha=target.getAlpha();
+                if(nativeMic!=null)nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+                nativeMic=target;
             }
             nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             updateMic();
@@ -219,7 +219,7 @@ public final class VoiceRuntime {
             if(candidate==null || candidate.getHeight()<=0)return false;
             keyboardSurface=candidate;surfaceAlpha=candidate.getAlpha();surfaceAccessibility=candidate.getImportantForAccessibility();
             int accent=Color.WHITE;
-            panel=new VoicePanel(ime,0x99000000,accent);
+            panel=new VoicePanel(ime,0xB3000000,accent);
             panel.setOnClickListener(v->toggle());
             panel.setOnLongClickListener(v->{cancel();return true;});
             overlay=new VoiceOverlay(ime,this::cancel);
@@ -261,8 +261,17 @@ public final class VoiceRuntime {
         void showProcessing(){hidePanel();updateMic();}
         void updateMic(){
             boolean processing=ui.phase()==VoiceUiState.Phase.PROCESSING;
-            if(nativeMic!=null)nativeMic.setAlpha(processing?0:nativeMicAlpha);
+            if(processing){
+                if(processingMic!=nativeMic){
+                    restoreProcessingMic();processingMic=nativeMic;
+                    if(processingMic!=null)nativeMicAlpha=processingMic.getAlpha();
+                }
+                if(processingMic!=null)processingMic.setAlpha(0);
+            }else restoreProcessingMic();
             if(button!=null)button.setProcessing(processing);
+        }
+        void restoreProcessingMic(){
+            if(processingMic!=null){processingMic.setAlpha(nativeMicAlpha);processingMic=null;}
         }
         void removePanel(){
             hidePanel();
@@ -289,7 +298,8 @@ public final class VoiceRuntime {
         }
         void removeButton(){
             removeObservers();
-            if(nativeMic!=null){nativeMic.setAlpha(nativeMicAlpha);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
+            restoreProcessingMic();
+            if(nativeMic!=null)nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
             if(button!=null && button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
             button=null;nativeMic=null;
         }

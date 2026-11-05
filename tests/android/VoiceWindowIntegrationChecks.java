@@ -170,6 +170,13 @@ public final class VoiceWindowIntegrationChecks {
                     || (Boolean)field(field(session,"button"),"processing"))throw new AssertionError("Cancel did not clear the microphone spinner");
                 if(((View)field(session,"nativeMic")).getAlpha()!=(Float)field(session,"nativeMicAlpha"))
                     throw new AssertionError("Cancel did not restore the native microphone alpha");
+                View nativeMic=(View)field(session,"nativeMic");float nativeAlpha=nativeMic.getAlpha();
+                try{
+                    nativeMic.setAlpha(.38f);call("updateMic");
+                    if(nativeMic.getAlpha()!=.38f)throw new AssertionError("Idle refresh overwrote Gboard's microphone appearance");
+                    nativeMic.setAlpha(1f);call("updateMic");
+                    if(nativeMic.getAlpha()!=1f)throw new AssertionError("Idle refresh pinned the native microphone to a stale dimmed alpha");
+                }finally{nativeMic.setAlpha(nativeAlpha);}
                 WindowManager.LayoutParams restored=ime.getWindow().getWindow().getAttributes();
                 if(restored.flags!=original.flags || (Build.VERSION.SDK_INT>=30 && restored.getFitInsetsTypes()!=original.getFitInsetsTypes()))throw new AssertionError("Window flags/insets leaked");
                 if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Cancel changed the editor connection");
