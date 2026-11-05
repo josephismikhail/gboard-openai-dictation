@@ -23,7 +23,23 @@ public final class SetupInstrumentation extends Instrumentation {
             String action=arguments.getString("action", "verify");
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
             String alias="gboard-openai-migration";
-            if("messagesTransitionTest".equals(action)){
+            if("mergeVocabulary".equals(action)){
+                JSONObject update=new JSONObject(new String(Base64.decode(arguments.getString("update"),Base64.NO_WRAP),"UTF-8"));
+                JSONObject config=VoiceConfig.load(getTargetContext());
+                org.json.JSONArray additions=update.getJSONArray("terms");
+                org.json.JSONArray terms=config.optJSONArray("vocabulary");if(terms==null)terms=new org.json.JSONArray();
+                java.util.List<String> existing=new java.util.ArrayList<>(),requested=new java.util.ArrayList<>();
+                for(int i=0;i<terms.length();i++)existing.add(terms.getString(i));
+                for(int i=0;i<additions.length();i++)requested.add(additions.getString(i));
+                terms=new org.json.JSONArray(org.gboardopenai.PreferredVocabulary.merge(existing,requested));
+                String extra=update.optString("extraInstructions","");if(extra.length()>4000)throw new IllegalArgumentException();
+                String prompt=config.optString("prompt",org.gboardopenai.VoiceSettingsActivity.DEFAULT_PROMPT);
+                if(!extra.isEmpty() && !prompt.contains(extra))prompt+="\n\n"+extra;
+                config.put("vocabulary",terms).put("prompt",prompt);VoiceConfig.save(getTargetContext(),config);
+                result.putBoolean("updated",true);
+            } else if("mediaFocusTest".equals(action)){
+                result.putString("mediaFocusTests",MediaFocusChecks.run(this).toString());
+            } else if("messagesTransitionTest".equals(action)){
                 Thread.sleep(Math.min(10000,Math.max(0,Integer.parseInt(arguments.getString("delayMs","0")))));
                 result.putString("messagesTransitionMetrics",MessagesTransitionChecks.run(this).toString());
             } else if("messagesInspect".equals(action)){

@@ -150,12 +150,12 @@ public final class VoiceEngine {
                     file.write(metrics.toString().getBytes("UTF-8"));
                 }
                 if (!cancelled.get()) {
-                    if (verdict instanceof FidelityVerdict.Ok) listener.result(cleaned);
-                    else { listener.error("Cleanup could not preserve the wording; original text inserted."); listener.result(raw); }
+                    if (verdict instanceof FidelityVerdict.Ok) deliver(cleaned);
+                    else { listener.error("Cleanup could not preserve the wording; original text inserted."); deliver(raw); }
                 }
             } catch (Throwable error) {
                 if (!cancelled.get()) {
-                    if (!raw.isEmpty()) { listener.error("Cleanup unavailable; original transcript inserted."); listener.result(raw); }
+                    if (!raw.isEmpty()) { listener.error("Cleanup unavailable; original transcript inserted."); deliver(raw); }
                     else fail("OpenAI dictation failed. Check your connection and try again.");
                 }
             } finally {
@@ -166,6 +166,7 @@ public final class VoiceEngine {
             }
         });
     }
+    private void deliver(String text){listener.result(PreferredSpelling.apply(text,vocabulary));}
     private JSONObject cleanup(String raw) throws Exception {
         String prompt = config.getString("prompt");
         if (prompt.contains("{{vocabulary}}")) prompt = prompt.replace("{{vocabulary}}",
