@@ -49,8 +49,8 @@ public final class MediaFocusChecks {
                 result.put("audioFocusGranted",granted);
                 VoiceUiState state=(VoiceUiState)field(session,"ui");state.begin();state.recording();state.stop();
                 call(session,"showProcessing");
-                if(field(session,"panel")!=null || field(session,"overlay")!=null || field(session,"windowState")!=null)
-                    throw new AssertionError("Processing did not dismiss the full-screen voice surface");
+                if(field(session,"panel")==null || field(session,"overlay")==null || field(session,"windowState")==null)
+                    throw new AssertionError("Processing did not retain the full-screen voice surface");
                 if(field(session,"mediaPlayback")!=gate || gate.isAcquired()!=granted)
                     throw new AssertionError("Media focus was released before processing finished");
                 result.put("heldThroughProcessing",granted);

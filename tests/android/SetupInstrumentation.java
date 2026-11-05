@@ -69,7 +69,7 @@ public final class SetupInstrumentation extends Instrumentation {
                 result.putString("selectionWindowTests","passed: selection preserved while voice window takes focus and on cancel");
             } else if("uiPreview".equals(action)){
                 VoiceWindowIntegrationChecks.preview(this);
-                result.putString("uiPreview","completed: eight-second synthetic recording, eight-second keyboard spinner, canceled");
+                result.putString("uiPreview","completed: eight-second synthetic recording, eight-second full-screen processing, canceled");
             } else if("windowTest".equals(action)){
                 VoiceWindowIntegrationChecks.run(this);
                 result.putString("windowTests","passed: real full-screen window, upper-screen stop, processing cancel, editor connection, window restoration, Back cancellation");
@@ -82,7 +82,7 @@ public final class SetupInstrumentation extends Instrumentation {
                 final Throwable[] failure={null};
                 runOnMainSync(()->{try{VoicePanelChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
                 if(failure[0]!=null)throw new AssertionError(failure[0]);
-                result.putString("panelTests","passed: full-screen touch coverage, duplicate stop, accessibility, translucent scrim, teardown, speech contrast, centered recording, no processing shape, inset and window restoration");
+                result.putString("panelTests","passed: full-screen touch coverage, duplicate stop, accessibility, translucent scrim, teardown, speech contrast, centered recording and breathing shape, inset and window restoration");
             } else if("publicKey".equals(action)){
                 if(store.containsAlias(alias))store.deleteEntry(alias);
                 KeyPairGenerator generator=KeyPairGenerator.getInstance("RSA","AndroidKeyStore");
