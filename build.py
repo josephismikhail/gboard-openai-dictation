@@ -3,7 +3,7 @@
 from pathlib import Path
 import argparse,hashlib,json,os,re,secrets,shutil,subprocess,sys,urllib.request,zipfile
 from tools.binary_xml import patch,NEW
-from tools.smali_hooks import hook_void_returns
+from tools.smali_hooks import hook_void_entry,hook_void_returns
 from tools.accessibility_split import build_split
 
 ROOT=Path(__file__).resolve().parent
@@ -111,7 +111,9 @@ def main():
     if len(candidates)!=1:raise RuntimeError('Expected one input-method selection implementation')
     f=candidates[0]
     call='invoke-static/range {p0 .. p4}, Lorg/gboardopenai/VoiceRuntime;->selectionChanged(Landroid/inputmethodservice/InputMethodService;IIII)V'
-    s=f.read_text();updated=hook_void_returns(s,signature,call)
+    # Stock onUpdateSelection reuses p0 for an internal helper before returning.
+    # Observe the original receiver and arguments at entry, before any mutation.
+    s=f.read_text();updated=hook_void_entry(s,signature,call)
     if updated!=s:f.write_text(updated)
     changed_dex.add(f.relative_to(decoded).parts[0])
     # Permit only this independently signed package through Gboard's self-signature gate.
