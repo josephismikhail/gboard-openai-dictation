@@ -64,7 +64,8 @@ public final class VoiceRuntime {
     public static JSONObject inspect(InputMethodService ime) throws Exception {
         JSONObject result=new JSONObject(); Session s=SESSIONS.get(ime);
         result.put("attached",s!=null).put("micFound",s!=null && s.button!=null);
-        if(s!=null)result.put("phase",s.ui.phase().name()).put("panelVisible",s.panel!=null).put("fullScreen",s.overlay!=null);
+        if(s!=null)result.put("phase",s.ui.phase().name()).put("panelVisible",s.panel!=null).put("fullScreen",s.overlay!=null)
+            .put("mediaFocusHeld",s.mediaPlayback!=null && s.mediaPlayback.isAcquired());
         JSONArray rows=new JSONArray();
         if (ime.getWindow()!=null) describe(ime.getWindow().getWindow().getDecorView(),rows,0);
         return result.put("views",rows);
@@ -89,6 +90,7 @@ public final class VoiceRuntime {
         DictationContext editorContext;
         final VoiceUiState ui = new VoiceUiState();
         VoicePanel panel; View keyboardSurface; float surfaceAlpha; int surfaceAccessibility;
+        MediaPlaybackGate mediaPlayback;
         FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
         android.window.OnBackInvokedCallback voiceBack;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
@@ -225,6 +227,9 @@ public final class VoiceRuntime {
             candidate.setAlpha(0);candidate.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             button.setVisibility(View.INVISIBLE);overlay.bringToFront();root.requestLayout();
             MessagesAccessibilityService.refreshActive();
+            // Hold transient audio focus through capture and processing. This asks
+            // cooperative players to pause without changing the media volume.
+            try{mediaPlayback=new MediaPlaybackGate(ime);}catch(RuntimeException ignored){mediaPlayback=null;}
             return true;
         }
         int sampleBackground(View surface){
@@ -251,6 +256,7 @@ public final class VoiceRuntime {
             if(c.topMargin!=top || c.rightMargin!=right){c.topMargin=top;c.rightMargin=right;closeButton.setLayoutParams(c);}
         }
         void removePanel(){
+            if(mediaPlayback!=null){mediaPlayback.close();mediaPlayback=null;}
             if(voiceBack!=null && android.os.Build.VERSION.SDK_INT>=33){
                 ime.getWindow().getWindow().getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(voiceBack);voiceBack=null;
             }
