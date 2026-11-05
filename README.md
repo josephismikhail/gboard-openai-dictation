@@ -15,11 +15,12 @@ its microphone as a predictable push-to-talk control:
 4. OpenAI transcribes the audio and cleans up filler words, explicit corrections,
    punctuation, and lists. The result is inserted into the current text field.
 
-In normal text fields, insertion adds a space for continuing by typing or
-dictating again, while respecting nearby whitespace and punctuation. Existing
-spaces are reused. Email, URL, password and numeric fields keep the exact result.
-Only the two characters next to each side of the selection are checked locally
-for spacing; this context is not sent to OpenAI.
+In normal text fields, cleanup uses the **whole current message** and the selected
+insertion/replacement position to fit the new words into context. It returns only
+the new text; the surrounding message is not rewritten. Local insertion adds
+boundary spaces only where adjacent text needs them, reuses existing spaces, and
+does not append a trailing space at the end of the field. Email, URL, password and
+numeric fields keep the exact result and are excluded from message-context capture.
 
 This project does not add PixelBoard's visual changes, feature-unlocking options,
 or update service. It is an independent repository, not a fork of PixelBoard.
@@ -47,7 +48,8 @@ The app, configuration, and encrypted API key live on your phone. Your phone
 connects **directly to OpenAI**; there is no project-operated server, proxy,
 account service, telemetry endpoint, or connection to the repository maintainer.
 
-This is **not offline/on-device AI**: audio and transcript text are sent to OpenAI.
+This is **not offline/on-device AI**: audio, transcript text, and (with message
+context enabled) the current message are sent to OpenAI.
 Normal Gboard functionality can still communicate with Google. This project
 does not claim to remove or audit all Google networking.
 
@@ -68,6 +70,14 @@ are subject to their own eligibility and expiry rules.
 After installing and selecting the keyboard, **long-press its idle microphone**
 to open **OpenAI dictation** settings. Enter your own OpenAI API key and save it.
 Optional vocabulary and cleanup instructions are configured in the same screen.
+**Use the whole message as cleanup context** is enabled by default and can be
+turned off there. Context is held only for the current dictation, never saved or
+logged. If the editor cannot provide a complete message, cleanup falls back to
+the transcript alone. Messages over 200,000 characters are excluded rather than
+silently truncated. Capture cross-checks the extracted message against separate
+before/after-selection reads; it relies on the host editor exposing its full text.
+If the captured message or selection changes before insertion,
+the result is not applied to a different target.
 
 The key is encrypted with an Android Keystore key in app-private storage. It is
 not built into the APK or written to this repository. The key field is masked
@@ -90,7 +100,9 @@ microphone from running indefinitely. System-disabled animations are respected.
 The full-screen view stays in the keyboard's own window, preserving its connection
 to the original text field. It needs no floating-overlay permission or separate
 recording activity. System navigation remains available; temporary window and
-touch-region changes are restored when dictation ends.
+touch-region and focus changes are restored when dictation ends. While recording
+or processing, the voice window takes focus so the editor's selection handles
+cannot float above it; the selected range is preserved for replacement or cancel.
 
 ## Development status
 

@@ -9,7 +9,13 @@ Keystore. Configuration is private to the application; app backups are disabled.
 The setup screen does not repopulate the API-key field with an existing key.
 
 Audio is held in memory during a recording and sent directly to OpenAI. The
-cleanup request includes the transcript and configured vocabulary. Requests use
+cleanup request includes the transcript and configured vocabulary. With message
+context enabled (the default), it also includes the complete current editor
+message split around the selection. This context is not written to storage or
+logs. Password and structured fields are excluded; detected incomplete or oversized
+editor snapshots are not sent. Extraction and independent before/after-selection
+reads must agree. Android allows host editors to limit these reads, so complete
+context depends on the editor exposing its full text. Requests use
 HTTPS/WSS and do not follow redirects. No project-maintainer server, update
 checker, telemetry service, or account backend is included.
 

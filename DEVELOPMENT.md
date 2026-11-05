@@ -88,6 +88,7 @@ python tools/build_setup.py --work ../gboard-openai-private --sdk "$ANDROID_HOME
 adb install -r ../gboard-openai-private/qa.apk
 adb shell am instrument -w -e action panelTest org.gboardopenai.test/.SetupInstrumentation
 adb shell am instrument -w -e action insertionTest org.gboardopenai.test/.SetupInstrumentation
+adb shell am instrument -w -e action editorContextTest org.gboardopenai.test/.SetupInstrumentation
 adb shell ime set org.gboardopenai.keyboard/com.android.inputmethod.latin.LatinIME
 adb shell am start -S -n org.gboardopenai.test/.VoiceTestActivity
 ```
@@ -97,10 +98,15 @@ The insertion checks use Android's actual editable input connection to verify
 consecutive dictations, continuing by typing, selected-text replacement (including possessives), reuse
 of an existing space, punctuation and structured fields. All examples are
 synthetic and no API request is needed.
+They also verify that an end-of-field dictation has no automatic trailing space.
+Context tests cover whole-message extraction, exact selection boundaries,
+changed-target detection, partial and prefix-only extract rejection, overflow and
+boundary checks, structural newline preservation, and password exclusion.
 Remove the temporary harness with `adb uninstall org.gboardopenai.test` when done.
 
 To test full-screen touch routing in the actual IME without a microphone or API
-request, start the following command, then use a second terminal to select the
+request, first stop the QA app with `adb shell am force-stop org.gboardopenai.test`.
+Start the following command, then use a second terminal to select the
 keyboard and open `VoiceTestActivity` as above within ten seconds:
 
 ```sh
@@ -114,6 +120,21 @@ connection and window attributes, tests a resize while microphone discovery is
 throttled, then tests Back cancellation. The rendering checks also exercise
 mdpi, xhdpi and xxhdpi contexts without changing the phone's display settings. The reflection
 used to arrange this synthetic state exists only in the optional QA APK.
+
+For the selected-text case, run `selectionWindowTest` instead of `windowTest`
+and launch the test activity with `--ez selectionTest true`. It checks that the
+voice window gains focus while the selected range and complete message remain
+available, then checks cancellation and replacement.
+
+The optional `contextCleanupTest` action makes five real OpenAI cleanup requests
+using synthetic messages and the credential already stored on the device. Pass
+`-e delayMs 4000` and open the QA editor with the keyboard selected during that
+delay if the device restricts the keyboard's background network access. It
+checks selected-word replacement, mid-sentence insertion, appending and inserting
+list items without existing boundary newlines, and
+whole-message naming context, including the production fidelity guard. Run it
+only when live API use is authorized; it is never part of public CI. No key or
+message content is printed.
 
 The optional full-screen interaction study runs entirely inside the QA app:
 
