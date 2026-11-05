@@ -8,6 +8,30 @@ from tools.accessibility_split import build_split
 
 ROOT=Path(__file__).resolve().parent
 
+def reset_compiler_output(work):
+    """Replace only the private compiler output after resolving every delete target."""
+    root=Path(work).resolve(strict=True)
+    classes=root/'classes'
+    if classes.is_symlink() or classes.resolve()!=classes or classes.parent!=root:
+        raise ValueError('Compiler output must be a plain classes directory inside the work directory')
+    if classes.exists():
+        if not classes.is_dir():
+            raise ValueError('Compiler output is not a directory')
+        # Compiler output never needs links. Validate the complete tree before
+        # deleting anything, including junctions that resolve outside this path.
+        pending=[classes]
+        while pending:
+            directory=pending.pop()
+            for child in directory.iterdir():
+                resolved=child.resolve()
+                if child.is_symlink() or resolved!=child or not resolved.is_relative_to(classes):
+                    raise ValueError('Compiler output contains a redirected path')
+                if child.is_dir():pending.append(child)
+        shutil.rmtree(classes)
+    classes.mkdir()
+    return classes
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--stock',type=Path,required=True,help='Directory containing base.apk and its installed splits')
@@ -42,7 +66,7 @@ def main():
         raise RuntimeError('Unsupported base APK. This patch is verified for Gboard 18.5.6.993608717 arm64 only.')
     decoded=work/'decoded'
     if not decoded.exists():run([exe('java'),'-jar',apktool,'d','-f','-r','-o',decoded,stock/'base.apk'])
-    classes=work/'classes';classes.mkdir(exist_ok=True)
+    classes=reset_compiler_output(work)
     compilercp=os.pathsep.join(str(deps[n]) for n in ['compiler','build-api','script-runtime','reflect','daemon','coroutines','kotlin','annotations'])
     librarycp=os.pathsep.join(str(v) for v in [android,deps['okhttp'],deps['okio'],deps['kotlin'],deps['annotations']])
     run([exe('java'),'-cp',compilercp,'org.jetbrains.kotlin.cli.jvm.K2JVMCompiler','-no-stdlib','-no-reflect','-jvm-target','11','-classpath',librarycp,'-d',classes,*sorted((ROOT/'src/vendor').glob('*.kt'))])
