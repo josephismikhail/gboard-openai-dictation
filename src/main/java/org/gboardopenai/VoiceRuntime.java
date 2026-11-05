@@ -219,7 +219,7 @@ public final class VoiceRuntime {
             if(candidate==null || candidate.getHeight()<=0)return false;
             keyboardSurface=candidate;surfaceAlpha=candidate.getAlpha();surfaceAccessibility=candidate.getImportantForAccessibility();
             int accent=Color.WHITE;
-            panel=new VoicePanel(ime,0xB3000000,accent);
+            panel=new VoicePanel(ime,0xCC000000,accent);
             panel.setOnClickListener(v->toggle());
             panel.setOnLongClickListener(v->{cancel();return true;});
             overlay=new VoiceOverlay(ime,this::cancel);
