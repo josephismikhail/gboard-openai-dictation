@@ -27,6 +27,11 @@ public final class MessagesAccessibilityService extends AccessibilityService {
     private Rect placed=new Rect();
     private boolean handingOff,recorderAvailable;
     private int composerResourceId;
+    private final MessagesShortcutState shortcutState=new MessagesShortcutState();
+    private AccessibilityNodeInfo movingComposer,movingRecorder;
+    private long trackUntil,lastRefresh;
+    private final Runnable track=this::trackPosition;
+    private final Runnable expireIcon=VoiceRuntime::refreshMessagesControls;
 
     @Override protected void onServiceConnected(){
         instance=this;manager=getSystemService(WindowManager.class);
@@ -35,12 +40,66 @@ public final class MessagesAccessibilityService extends AccessibilityService {
         catch(android.content.pm.PackageManager.NameNotFoundException | RuntimeException ignored){composerResourceId=0;}
         refresh();
     }
-    @Override public void onAccessibilityEvent(AccessibilityEvent event){schedule(40);}
+    @Override public void onAccessibilityEvent(AccessibilityEvent event){
+        if(handingOff){if(!main.hasCallbacks(update))schedule(40);return;}
+        beginTracking();schedule(Math.max(0,lastRefresh+80-android.os.SystemClock.uptimeMillis()));
+    }
     @Override public void onInterrupt(){clear();}
     @Override public void onDestroy(){clear();if(instance==this)instance=null;super.onDestroy();}
-    private void clear(){main.removeCallbacksAndMessages(null);removeShortcut();handingOff=false;recorderAvailable=false;VoiceRuntime.cancelMessagesHandoff();VoiceRuntime.refreshMessagesControls();}
+    private void clear(){main.removeCallbacksAndMessages(null);releaseTracking();removeShortcut();handingOff=false;recorderAvailable=false;shortcutState.reset();VoiceRuntime.cancelMessagesHandoff();VoiceRuntime.refreshMessagesControls();}
     private void schedule(long delay){main.removeCallbacks(update);main.postDelayed(update,delay);}
     public static void refreshActive(){if(instance!=null)instance.schedule(40);}
+    /** Rendering survives transiently missing controls; clicks still require a fresh target. */
+    public static boolean isRecorderMode(int fieldId){
+        return Looper.myLooper()==Looper.getMainLooper() && instance!=null
+            && (instance.composerResourceId>0 && fieldId>0
+                ? instance.composerResourceId==fieldId : instance.recorderAvailable)
+            && instance.shortcutState.mode(android.os.SystemClock.uptimeMillis())==MessagesShortcutState.Mode.RECORDER;
+    }
+    public static void keyboardTransition(){
+        if(instance!=null){
+            instance.beginTracking();
+            // Focusing the composer can call this before its resized layout exists.
+            // The queued handoff validates that layout when the IME is ready.
+            if(instance.handingOff)instance.schedule(40);else instance.refresh();
+        }
+    }
+
+    private void beginTracking(){
+        trackUntil=android.os.SystemClock.uptimeMillis()+900;
+        main.removeCallbacks(track);main.post(track);
+    }
+    private void releaseTracking(){
+        main.removeCallbacks(track);
+        if(movingComposer!=null)movingComposer.recycle();
+        if(movingRecorder!=null)movingRecorder.recycle();
+        movingComposer=null;movingRecorder=null;
+    }
+    private void trackPosition(){
+        // The shortcut is hidden during this transition. Leave its deferred target
+        // validation to refresh/the handoff consumer, not the geometry tracker.
+        if(handingOff || VoiceRuntime.isVoiceUiVisible())return;
+        if(android.os.SystemClock.uptimeMillis()>trackUntil)return;
+        if(movingComposer!=null && movingRecorder!=null){
+            try{
+                AccessibilityNodeInfo root=messagesRoot();
+                boolean sameWindow=root!=null && root.getWindowId()==movingRecorder.getWindowId();
+                if(root!=null)root.recycle();
+                boolean current=sameWindow && movingComposer.refresh() && movingRecorder.refresh()
+                    && MessagesControlPolicy.isComposer(String.valueOf(movingComposer.getPackageName()),
+                        movingComposer.getViewIdResourceName(),movingComposer.isEditable(),movingComposer.isEnabled(),movingComposer.isVisibleToUser());
+                ArrayList<String> labels=new ArrayList<>();
+                if(current)descriptions(movingRecorder,labels,0);
+                current=current && MessagesControlPolicy.isRecorder(String.valueOf(movingRecorder.getPackageName()),
+                    movingRecorder.getViewIdResourceName(),movingRecorder.isClickable(),movingRecorder.isEnabled(),movingRecorder.isVisibleToUser(),labels);
+                if(!current){releaseTracking();removeShortcut();schedule(0);return;}
+                Rect bounds=new Rect();movingRecorder.getBoundsInScreen(bounds);
+                if(!handingOff && !VoiceRuntime.isVoiceUiVisible())showShortcut(bounds);
+            }catch(RuntimeException ignored){releaseTracking();removeShortcut();schedule(0);return;}
+        }
+        // Only refresh two known nodes during movement, never walk the message tree per frame.
+        main.postDelayed(track,24);
+    }
 
     /** Called only by our in-process keyboard, on the main thread. */
     public static boolean canOpenRecorder(){
@@ -50,16 +109,22 @@ public final class MessagesAccessibilityService extends AccessibilityService {
         if(Looper.myLooper()!=Looper.getMainLooper() || instance==null)return false;
         try(Target target=instance.findTarget()){
             if(target==null){instance.recorderAvailable=false;instance.schedule(40);return false;}
-            instance.removeShortcut();
             boolean opened=target.recorder.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            instance.schedule(80);return opened;
+            instance.beginTracking();instance.schedule(0);return opened;
         }catch(RuntimeException ignored){instance.recorderAvailable=false;instance.schedule(40);return false;}
     }
     private void refresh(){
         main.removeCallbacks(update);
+        lastRefresh=android.os.SystemClock.uptimeMillis();
         try(Target target=findTarget()){
             recorderAvailable=target!=null;
             if(target==null){loseTarget();return;}
+            main.removeCallbacks(expireIcon);
+            if(movingComposer!=null)movingComposer.recycle();
+            if(movingRecorder!=null)movingRecorder.recycle();
+            movingComposer=AccessibilityNodeInfo.obtain(target.composer);
+            movingRecorder=AccessibilityNodeInfo.obtain(target.recorder);
+            if(android.os.SystemClock.uptimeMillis()<trackUntil){main.removeCallbacks(track);main.postDelayed(track,24);}
             if(handingOff || VoiceRuntime.isVoiceUiVisible())removeShortcut();
             else showShortcut(target.bounds);
             VoiceRuntime.refreshMessagesControls();
@@ -70,7 +135,11 @@ public final class MessagesAccessibilityService extends AccessibilityService {
     }
     private void loseTarget(){
         recorderAvailable=false;handingOff=false;VoiceRuntime.cancelMessagesHandoff();
-        removeShortcut();VoiceRuntime.refreshMessagesControls();
+        shortcutState.update(true,false,false,android.os.SystemClock.uptimeMillis());
+        if(!main.hasCallbacks(expireIcon))main.postDelayed(expireIcon,1000);
+        releaseTracking();removeShortcut();VoiceRuntime.refreshMessagesControls();
+        // Layout replacement may briefly remove the composer during an IME transition.
+        if(android.os.SystemClock.uptimeMillis()<trackUntil)schedule(40);
     }
     private void startDictation(){
         if(handingOff || VoiceRuntime.isVoiceUiVisible())return;
@@ -98,6 +167,9 @@ public final class MessagesAccessibilityService extends AccessibilityService {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
                 | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,android.graphics.PixelFormat.TRANSLUCENT);
         p.gravity=Gravity.TOP|Gravity.LEFT;p.x=bounds.left;p.y=bounds.top;
+        p.windowAnimations=0;
+        // Follow Messages' animation positions directly, without a second window animation.
+        if(android.os.Build.VERSION.SDK_INT>=34)p.setCanPlayMoveAnimation(false);
         p.setTitle("Messages dictation shortcut");
         if(android.os.Build.VERSION.SDK_INT>=30)p.setFitInsetsTypes(0);
         if(shortcut==null){
@@ -114,7 +186,7 @@ public final class MessagesAccessibilityService extends AccessibilityService {
         try{
         collect(root,nodes,0);
         if(nodes.size()>=1500)return null;
-        AccessibilityNodeInfo composer=null,recorder=null,header=null;boolean ambiguous=false;
+        AccessibilityNodeInfo composer=null,recorder=null,header=null;boolean ambiguous=false,sawSend=false;
         for(AccessibilityNodeInfo node:nodes){
             String pkg=String.valueOf(node.getPackageName()),id=node.getViewIdResourceName();
             if(MessagesControlPolicy.isComposer(pkg,id,node.isEditable(),node.isEnabled(),node.isVisibleToUser())){
@@ -125,16 +197,21 @@ public final class MessagesAccessibilityService extends AccessibilityService {
             }
             if("Compose:Draft:Send".equals(id)){
                 ArrayList<String> labels=new ArrayList<>();descriptions(node,labels,0);
+                sawSend|=MessagesControlPolicy.isSend(pkg,id,node.isVisibleToUser(),labels);
                 if(MessagesControlPolicy.isRecorder(pkg,id,node.isClickable(),node.isEnabled(),node.isVisibleToUser(),labels)){
                     if(recorder!=null)ambiguous=true;else recorder=node;
                 }
             }
         }
+        shortcutState.update(true,false,sawSend,android.os.SystemClock.uptimeMillis());
         Target result=null;
         if(!ambiguous && composer!=null && recorder!=null && header!=null){
             Rect bounds=new Rect();recorder.getBoundsInScreen(bounds);
             String identity=headerIdentity(header);
-            if(!bounds.isEmpty() && !identity.isEmpty())result=new Target(AccessibilityNodeInfo.obtain(composer),AccessibilityNodeInfo.obtain(recorder),AccessibilityNodeInfo.obtain(header),identity,bounds);
+            if(!bounds.isEmpty() && !identity.isEmpty()){
+                result=new Target(AccessibilityNodeInfo.obtain(composer),AccessibilityNodeInfo.obtain(recorder),AccessibilityNodeInfo.obtain(header),identity,bounds);
+                shortcutState.update(true,!sawSend,sawSend,android.os.SystemClock.uptimeMillis());
+            }
         }
         return result;
         }finally{for(AccessibilityNodeInfo node:nodes)node.recycle();}
@@ -152,6 +229,7 @@ public final class MessagesAccessibilityService extends AccessibilityService {
                 AccessibilityNodeInfo root=window.getRoot();
                 if(root==null)return null;
                 if(MessagesControlPolicy.MESSAGES_PACKAGE.equals(String.valueOf(root.getPackageName())))return root;
+                shortcutState.reset();
                 root.recycle();return null;
             }
             return null;
@@ -215,12 +293,18 @@ public final class MessagesAccessibilityService extends AccessibilityService {
         ShortcutView(){super(MessagesAccessibilityService.this);setClickable(true);setFocusable(true);setContentDescription("Start OpenAI dictation");}
         @Override protected void onDraw(Canvas canvas){
             float d=getResources().getDisplayMetrics().density,cx=getWidth()/2f,cy=getHeight()/2f;
-            paint.setStyle(Paint.Style.FILL);paint.setColor(Color.rgb(168,199,250));
+            boolean dark=(getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            paint.setStyle(Paint.Style.FILL);paint.setColor(dark?Color.rgb(168,199,250):Color.rgb(11,87,208));
             canvas.drawRoundRect(0,0,getWidth(),getHeight(),28*d,28*d,paint);
-            paint.setColor(Color.rgb(6,46,111));canvas.drawRoundRect(cx-3*d,cy-10*d,cx+3*d,cy+2*d,3*d,3*d,paint);
+            paint.setColor(dark?Color.rgb(6,46,111):Color.WHITE);
+            // Standard 24dp microphone proportions, optically centered in the native button.
+            canvas.drawRoundRect(cx-3*d,cy-10*d,cx+3*d,cy+2*d,3*d,3*d,paint);
             paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2*d);paint.setStrokeCap(Paint.Cap.ROUND);
-            canvas.drawArc(cx-7*d,cy-8*d,cx+7*d,cy+7*d,0,180,false,paint);
-            canvas.drawLine(cx,cy+7*d,cx,cy+11*d,paint);canvas.drawLine(cx-4*d,cy+11*d,cx+4*d,cy+11*d,paint);
+            canvas.drawArc(cx-7*d,cy-7*d,cx+7*d,cy+7*d,0,180,false,paint);
+            canvas.drawLine(cx,cy+7*d,cx,cy+10*d,paint);canvas.drawLine(cx-3*d,cy+10*d,cx+3*d,cy+10*d,paint);
+        }
+        @Override public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info){
+            super.onInitializeAccessibilityNodeInfo(info);info.setClassName(android.widget.Button.class.getName());
         }
     }
 }

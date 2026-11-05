@@ -43,7 +43,7 @@ def build_split(aapt2, android, stock, work):
         android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewFocused|typeViewScrolled"
         android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
         android:accessibilityFeedbackType="feedbackGeneric"
-        android:notificationTimeout="100"
+        android:notificationTimeout="20"
         android:canRetrieveWindowContent="true" />''', encoding='utf-8')
     (root / 'res/values/strings.xml').write_text(
         '<resources><string name="gboard_openai_messages_description">' + DESCRIPTION + '</string></resources>', encoding='utf-8')

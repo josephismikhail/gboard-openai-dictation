@@ -18,6 +18,7 @@ import java.util.WeakHashMap;
 public final class VoiceRuntime {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final WeakHashMap<InputMethodService, Session> SESSIONS = new WeakHashMap<>();
+    private static final WeakHashMap<ViewGroup, RetiredMic> RETIRED_MICS = new WeakHashMap<>();
     private static final MessagesHandoff MESSAGES_HANDOFF = new MessagesHandoff();
     /** In-process entry only; the accessibility shortcut must originate in a current Messages composer. */
     public static boolean requestMessagesDictation(MessagesHandoff.Target target){
@@ -41,14 +42,25 @@ public final class VoiceRuntime {
         MAIN.post(()->{for(Session session:SESSIONS.values())session.updateMessagesControl();});
     }
     public static void attach(InputMethodService ime) {
-        MAIN.post(() -> {
+        Runnable attach=() -> {
+            MessagesAccessibilityService.keyboardTransition();
+            if(ime.getWindow()!=null && ime.getWindow().getWindow()!=null){
+                View decor=ime.getWindow().getWindow().getDecorView();
+                if(decor instanceof ViewGroup)finishRetiredMic((ViewGroup)decor);
+            }
             Session session=SESSIONS.get(ime);
             if(session==null) { session=new Session(ime); SESSIONS.put(ime, session); }
+            // The lifecycle hook runs before the keyboard's first paint. Configure
+            // its Messages icon now, rather than briefly drawing the stock mic.
+            session.scan();
             session.scanLater();
-        });
+        };
+        if(Looper.myLooper()==Looper.getMainLooper())attach.run();else MAIN.post(attach);
     }
     public static void detach(InputMethodService ime) {
         Session session=SESSIONS.remove(ime); if(session!=null) session.close();
+        if(Looper.myLooper()==Looper.getMainLooper())MessagesAccessibilityService.keyboardTransition();
+        else MAIN.post(MessagesAccessibilityService::keyboardTransition);
     }
     /** Runs after Gboard computes its normal editor insets, including each early return. */
     public static void adjustInsets(InputMethodService ime, InputMethodService.Insets insets) {
@@ -89,6 +101,7 @@ public final class VoiceRuntime {
         FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
         android.window.OnBackInvokedCallback voiceBack;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
+        ViewTreeObserver.OnPreDrawListener preDrawListener;
         int generation; boolean closed, reportedMissing; long lastScan;
         Session(InputMethodService ime) { this.ime=ime; }
         void scanLater() {
@@ -100,6 +113,7 @@ public final class VoiceRuntime {
             View decor=ime.getWindow().getWindow().getDecorView();
             if(!(decor instanceof FrameLayout)) return;
             if(root!=decor) {
+                finishRetiredMic((ViewGroup)decor);
                 cancel(); removeButton(); root=(ViewGroup)decor;
                 layoutListener=() -> {
                     // Window expansion must update geometry even when microphone discovery is throttled.
@@ -108,6 +122,16 @@ public final class VoiceRuntime {
                     if(now-lastScan>200) {lastScan=now; MAIN.post(this::scan);}
                 };
                 root.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
+                preDrawListener=()->{
+                    View previous=nativeMic;
+                    boolean hadButton=button!=null;
+                    if(button==null || nativeMic==null || !nativeMic.isAttachedToWindow() || !nativeMic.isShown())scan();
+                    else updateMessagesControl();
+                    // An unmeasured keyboard may only expose its mic at pre-draw.
+                    // Let the added/repositioned button lay out before showing it.
+                    return button==null || (hadButton && previous==nativeMic);
+                };
+                root.getViewTreeObserver().addOnPreDrawListener(preDrawListener);
             }
             View target=findMic(root);
             if(target==null) {
@@ -147,8 +171,11 @@ public final class VoiceRuntime {
         }
         boolean messagesRecorderMode(){
             android.view.inputmethod.EditorInfo info=ime.getCurrentInputEditorInfo();
-            return ui.phase()==VoiceUiState.Phase.IDLE && info!=null && MessagesHandoff.PACKAGE.equals(info.packageName)
-                && MessagesAccessibilityService.canOpenRecorder();
+            // Keep the recorder identity through transient native recording UI.
+            // A positively identified Send control restores normal dictation;
+            // the actual recorder click always validates a fresh target.
+            return info!=null && MessagesHandoff.PACKAGE.equals(info.packageName)
+                && MessagesAccessibilityService.isRecorderMode(info.fieldId);
         }
         void updateMessagesControl(){
             if(button==null)return;
@@ -269,13 +296,55 @@ public final class VoiceRuntime {
             MessagesAccessibilityService.refreshActive();
         }
         void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;editorContext=null;ui.reset();removePanel(); }
-        void removeButton(){
-            if(nativeMic!=null){nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
+        void removeObservers(){
             if(root!=null && layoutListener!=null && root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
-            if(button!=null && button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
-            button=null;nativeMic=null;layoutListener=null;
+            if(root!=null && preDrawListener!=null && root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnPreDrawListener(preDrawListener);
+            layoutListener=null;preDrawListener=null;
         }
-        void close(){closed=true;cancel();removeButton();root=null;}
+        void removeButton(){
+            removeObservers();
+            if(nativeMic!=null){nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
+            if(button!=null && button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
+            button=null;nativeMic=null;
+        }
+        void close(){
+            // Preserve only the inert recorder glyph during the normal keyboard's
+            // exit animation. Audio, full-screen UI and observers stop immediately.
+            boolean retire=panel==null && root!=null && button!=null && button.recorder && nativeMic!=null;
+            closed=true;cancel();
+            if(retire){
+                removeObservers();button.setRecorder(true);nativeMic.setAlpha(0);
+                new RetiredMic(root,nativeMic,button).start();button=null;nativeMic=null;
+            }else removeButton();
+            root=null;
+        }
+    }
+    private static void finishRetiredMic(ViewGroup root){
+        RetiredMic retired=RETIRED_MICS.get(root);if(retired!=null)retired.finish();
+    }
+    /** Bounded visual ownership after the IME session ends; never retains recording state. */
+    private static final class RetiredMic implements View.OnAttachStateChangeListener {
+        final ViewGroup root;final View nativeMic;final MicButton button;
+        final Runnable cleanup=this::finish;
+        RetiredMic(ViewGroup root,View nativeMic,MicButton button){this.root=root;this.nativeMic=nativeMic;this.button=button;}
+        void start(){
+            finishRetiredMic(root);RETIRED_MICS.put(root,this);
+            nativeMic.setAlpha(0);
+            button.setOnClickListener(null);button.setOnLongClickListener(null);button.setEnabled(false);
+            button.setFocusable(false);button.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            root.addOnAttachStateChangeListener(this);
+            MAIN.postDelayed(cleanup,450);
+            if(!root.isAttachedToWindow())finish();
+        }
+        void finish(){
+            MAIN.removeCallbacks(cleanup);root.removeOnAttachStateChangeListener(this);
+            if(RETIRED_MICS.get(root)!=this)return;
+            RETIRED_MICS.remove(root);
+            nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+            if(button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
+        }
+        @Override public void onViewAttachedToWindow(View view){}
+        @Override public void onViewDetachedFromWindow(View view){finish();}
     }
     private static final class MicButton extends View {
         private boolean recorder;
