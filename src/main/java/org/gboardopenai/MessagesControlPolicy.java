@@ -22,33 +22,14 @@ public final class MessagesControlPolicy {
             boolean visible,Collection<String> descendantDescriptions){
         if(!MESSAGES_PACKAGE.equals(packageName) || !RECORDER_VIEW_ID.equals(viewId)
                 || !clickable || !enabled || !visible || descendantDescriptions==null)return false;
-        return hasRecorderState(descendantDescriptions,false);
-    }
-
-    /** The native toggle remains the same control while its recorder sheet is open. */
-    public static boolean isRecorderOpen(Collection<String> descendantDescriptions){
-        return hasRecorderState(descendantDescriptions,true);
-    }
-
-    private static boolean hasRecorderState(Collection<String> descendantDescriptions,boolean openOnly){
-        if(descendantDescriptions==null)return false;
         boolean recorder=false;
         for(String description:descendantDescriptions){
             if(description==null)continue;
             // Messages reuses this resource ID for Send. Conflicting semantics must win.
             if(SEND_DESCRIPTION.matcher(description).find())return false;
-            if(OPEN_RECORDER_DESCRIPTION.equals(description) || (!openOnly && RECORDER_DESCRIPTION.equals(description)))recorder=true;
+            if(OPEN_RECORDER_DESCRIPTION.equals(description) || RECORDER_DESCRIPTION.equals(description))recorder=true;
         }
         return recorder;
-    }
-
-    /** A disabled Send control still identifies a draft state and must never be treated as Record. */
-    public static boolean isSend(String packageName,String viewId,boolean visible,Collection<String> descendantDescriptions){
-        if(!MESSAGES_PACKAGE.equals(packageName) || !RECORDER_VIEW_ID.equals(viewId)
-                || !visible || descendantDescriptions==null)return false;
-        for(String description:descendantDescriptions)
-            if(description!=null && SEND_DESCRIPTION.matcher(description).find())return true;
-        return false;
     }
 
     private MessagesControlPolicy(){}

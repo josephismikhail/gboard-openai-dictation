@@ -21,7 +21,8 @@ public final class MessagesTransitionChecks {
     private android.app.UiAutomation automation;
     private Object service,target;
     private AccessibilityNodeInfo recorder;
-    private int composerId,samples,paired,misses,nativeUnavailable,modeViolations,iconSamples;
+    private int samples,paired,misses,nativeUnavailable,appearanceViolations,iconSamples;
+    private View checkedShortcut,checkedKeyboard;
     private int maxDistance;
     private long offsetSince,maxOffsetDuration;
     private MessagesTransitionChecks(Instrumentation value){instrumentation=value;}
@@ -51,7 +52,6 @@ public final class MessagesTransitionChecks {
         if(!composer.isShowingHintText() && text!=null && text.length()!=0)
             throw new AssertionError("Transition measurement requires an empty draft; nothing was changed");
         if(!((MessagesHandoff.Target)target).isCurrent())throw new AssertionError("Messages target is not current");
-        composerId=(Integer)field(service,"composerResourceId");
         recorder=AccessibilityNodeInfo.obtain((AccessibilityNodeInfo)field(target,"recorder"));
     }
     private String diagnostics()throws Exception{
@@ -97,7 +97,6 @@ public final class MessagesTransitionChecks {
     }
     private void sample()throws Exception{
         samples++;
-        if(!MessagesAccessibilityService.isRecorderMode(composerId))modeViolations++;
         Map<?,?> sessions=(Map<?,?>)field(VoiceRuntime.class,"SESSIONS");
         for(Map.Entry<?,?> entry:sessions.entrySet()){
             InputMethodService ime=(InputMethodService)entry.getKey();
@@ -106,7 +105,10 @@ public final class MessagesTransitionChecks {
             View button=(View)field(entry.getValue(),"button");
             if(button!=null && button.isShown()){
                 iconSamples++;
-                if(!(Boolean)field(button,"recorder"))modeViolations++;
+                if(!"Start OpenAI dictation".contentEquals(button.getContentDescription()))appearanceViolations++;
+                View nativeMic=(View)field(entry.getValue(),"nativeMic");
+                if(nativeMic==null || nativeMic.getAlpha()!=1f)appearanceViolations++;
+                if(checkedKeyboard!=button){assertTransparent(button);checkedKeyboard=button;}
             }
         }
         if(!recorder.refresh() || !recorder.isVisibleToUser()){nativeUnavailable++;finishOffsetRun();return;}
@@ -114,6 +116,7 @@ public final class MessagesTransitionChecks {
         if(expected.isEmpty()){nativeUnavailable++;finishOffsetRun();return;}
         View shortcut=(View)field(service,"shortcut");
         if(shortcut==null || !shortcut.isShown() || !shortcut.isLaidOut() || shortcut.getWidth()==0 || shortcut.getHeight()==0){misses++;finishOffsetRun();return;}
+        if(checkedShortcut!=shortcut){assertTransparent(shortcut);checkedShortcut=shortcut;}
         if(android.os.Build.VERSION.SDK_INT>=34 && ((android.view.WindowManager.LayoutParams)shortcut.getLayoutParams()).canPlayMoveAnimation())
             throw new AssertionError("Shortcut window adds a second movement animation");
         int[] at=new int[2];shortcut.getLocationOnScreen(at);
@@ -123,6 +126,35 @@ public final class MessagesTransitionChecks {
         paired++;maxDistance=Math.max(maxDistance,distance);
         if(distance>2){if(offsetSince==0)offsetSince=SystemClock.uptimeMillis();}
         else finishOffsetRun();
+    }
+    private static void assertTransparent(View view){
+        if(view.getWidth()<=0 || view.getHeight()<=0)throw new AssertionError("Unmeasured touch layer");
+        android.graphics.Bitmap image=android.graphics.Bitmap.createBitmap(view.getWidth(),view.getHeight(),android.graphics.Bitmap.Config.ARGB_8888);
+        try{
+            view.draw(new android.graphics.Canvas(image));
+            int[] pixels=new int[image.getWidth()*image.getHeight()];
+            image.getPixels(pixels,0,image.getWidth(),0,0,image.getWidth(),image.getHeight());
+            for(int pixel:pixels)if(android.graphics.Color.alpha(pixel)!=0)throw new AssertionError("Touch layer draws over the native button");
+        }finally{image.recycle();}
+    }
+    private void verifyTapHandoff()throws Exception{
+        View shortcut=(View)field(service,"shortcut");
+        if(shortcut==null || !shortcut.isLaidOut())throw new AssertionError("No settled Messages touch target");
+        int[] at=new int[2];shortcut.getLocationOnScreen(at);
+        float x=at[0]+shortcut.getWidth()/2f,y=at[1]+shortcut.getHeight()/2f;
+        long time=SystemClock.uptimeMillis();
+        android.view.MotionEvent down=android.view.MotionEvent.obtain(time,time,android.view.MotionEvent.ACTION_DOWN,x,y,0);
+        android.view.MotionEvent up=android.view.MotionEvent.obtain(time,time+20,android.view.MotionEvent.ACTION_UP,x,y,0);
+        down.offsetLocation(-at[0],-at[1]);up.offsetLocation(-at[0],-at[1]);
+        try{
+            shortcut.dispatchTouchEvent(down);shortcut.dispatchTouchEvent(up);
+            Object handoff=field(VoiceRuntime.class,"MESSAGES_HANDOFF");
+            if(field(handoff,"target")==null)throw new AssertionError("A valid native-button tap did not queue dictation");
+        }finally{
+            // This runs in one main-thread callback. Cancel before the queued IME
+            // scan can execute: no microphone, model request or text insertion.
+            VoiceRuntime.cancelMessagesHandoff();down.recycle();up.recycle();
+        }
     }
     private void finishOffsetRun(){
         if(offsetSince!=0){maxOffsetDuration=Math.max(maxOffsetDuration,SystemClock.uptimeMillis()-offsetSince);offsetSince=0;}
@@ -159,7 +191,7 @@ public final class MessagesTransitionChecks {
                 ime.requestHideSelf(0);
             });
             measure();
-            main(()->{if(!((Map<?,?>)field(VoiceRuntime.class,"RETIRED_MICS")).isEmpty())throw new AssertionError("Retired keyboard controls outlived their exit animation");});
+            main(this::verifyTapHandoff);
         }finally{
             final boolean restore=interactionStarted;
             if(target!=null)main(()->{
@@ -171,8 +203,9 @@ public final class MessagesTransitionChecks {
         JSONObject metrics=new JSONObject().put("samples",samples).put("pairedSamples",paired)
             .put("maxOffsetPx",maxDistance).put("longestOffsetRunMs",maxOffsetDuration)
             .put("overlayMisses",misses).put("nativeUnavailableSamples",nativeUnavailable)
-            .put("iconSamples",iconSamples).put("modeViolations",modeViolations).put("keyboardRestoreRequested",restored[0]);
-        if(modeViolations!=0)throw new AssertionError("Recorder icon reverted during empty-composer measurement: "+metrics);
+            .put("iconSamples",iconSamples).put("appearanceViolations",appearanceViolations)
+            .put("tapHandoffVerified",true).put("keyboardRestoreRequested",restored[0]);
+        if(appearanceViolations!=0)throw new AssertionError("Native keyboard microphone changed during measurement: "+metrics);
         if(paired==0 || iconSamples==0)throw new AssertionError("No visible keyboard/shortcut measurements: "+metrics);
         return metrics;
     }

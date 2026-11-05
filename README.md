@@ -108,9 +108,9 @@ cannot float above it; the selected range is preserved for replacement or cancel
 
 Long-press the keyboard microphone to open dictation settings, then choose **Set up Messages shortcut**. Enable **Messages dictation shortcut** in Android accessibility settings. This integration is optional and disabled until you enable it.
 
-In a supported Google Messages conversation with an empty draft, a dictation microphone covers the native voice-note button. Tap it to open the existing full-screen dictation flow directly; the keyboard may appear briefly during the handoff. With the keyboard open, its former microphone position opens Messages' native voice-note recorder instead. Once Messages replaces its recorder with Send, the overlay disappears and the keyboard returns to normal dictation.
+In a supported Google Messages conversation with an empty draft, tap the existing gray waveform button to open the full-screen OpenAI dictation flow directly. The keyboard may appear briefly during the handoff. The keyboard's normal microphone also starts dictation; no button positions or icons are swapped. Once Messages replaces its voice-note button with Send, that button is left alone.
 
-The shortcut follows the recorder position while the keyboard opens and closes. Its keyboard icon stays steady through temporary layout changes and the native recorder transition; Messages search and unsupported fields keep normal dictation.
+Messages renders its own button, including its animation as the keyboard opens and closes. A transparent touch layer changes only its tap action. Taps are checked against the current control and conversation at both press and release; a stale hit area, a drag, or multiple fingers cannot trigger dictation. Messages search and unsupported fields keep normal keyboard dictation.
 
 This is a Messages-specific shortcut layer, not a modification of Google Messages. It never presses Send. It requires the observed English recorder label and identifiable conversation controls; unknown layouts keep their normal behavior. The accessibility service inspects Messages controls, the current draft and conversation header locally to validate the target. It does not save them. The existing OpenAI API key and dictation data handling remain the same. Disable the service in Android accessibility settings to restore the normal button behavior.
 

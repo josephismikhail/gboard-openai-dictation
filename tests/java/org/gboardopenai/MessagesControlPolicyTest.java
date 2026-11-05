@@ -75,31 +75,6 @@ public class MessagesControlPolicyTest {
         assertFalse(recorder("Send RCS message"));
     }
 
-    @Test public void recorderOpenRequiresTheExactObservedStateAndRejectsSend(){
-        assertTrue(MessagesControlPolicy.isRecorderOpen(Arrays.asList(null,"",OPEN_LABEL)));
-        assertFalse(MessagesControlPolicy.isRecorderOpen(Collections.singletonList(LABEL)));
-        assertFalse(MessagesControlPolicy.isRecorderOpen(Collections.singletonList("Hide recorder")));
-        assertFalse(MessagesControlPolicy.isRecorderOpen(Collections.singletonList(OPEN_LABEL+" ")));
-        assertFalse(MessagesControlPolicy.isRecorderOpen(Arrays.asList(OPEN_LABEL,"Send RCS message")));
-        assertFalse(MessagesControlPolicy.isRecorderOpen(Arrays.asList("Send",OPEN_LABEL)));
-        assertFalse(MessagesControlPolicy.isRecorderOpen(null));
-    }
-
-    @Test public void visibleSendSemanticsIdentifyDraftModeEvenWhenRecorderLabelAlsoExists(){
-        for(String send:Arrays.asList("Send","Send SMS","Send RCS message","Schedule send","Sending message","Message sent","SEND")){
-            assertTrue(MessagesControlPolicy.isSend(PACKAGE,RECORDER,true,Arrays.asList(null,LABEL,send)));
-        }
-    }
-
-    @Test public void unknownHiddenAndOtherAppControlsCannotIdentifySend(){
-        assertFalse(MessagesControlPolicy.isSend(PACKAGE,RECORDER,true,Collections.singletonList(LABEL)));
-        assertFalse(MessagesControlPolicy.isSend(PACKAGE,RECORDER,true,Collections.singletonList("sender")));
-        assertFalse(MessagesControlPolicy.isSend(PACKAGE,RECORDER,false,Collections.singletonList("Send")));
-        assertFalse(MessagesControlPolicy.isSend("other.app",RECORDER,true,Collections.singletonList("Send")));
-        assertFalse(MessagesControlPolicy.isSend(PACKAGE,"other_control",true,Collections.singletonList("Send")));
-        assertFalse(MessagesControlPolicy.isSend(PACKAGE,RECORDER,true,null));
-    }
-
     private static boolean recorder(String... labels){
         return MessagesControlPolicy.isRecorder(PACKAGE,RECORDER,true,true,true,Arrays.asList(labels));
     }
