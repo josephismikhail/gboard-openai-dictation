@@ -70,11 +70,11 @@ public class VoicePanel extends View {
         float desired = now - lastSample > 220 ? 0 : target;
         displayed += (desired - displayed) * (1 - (float)Math.exp(-dt * (desired > displayed ? 32 : 14)));
         if (displayed < .02f) {
-            paint.setStrokeWidth(d); paint.setAlpha(65);
+            paint.setStrokeWidth(d); paint.setAlpha(128);
             canvas.drawLine(cx-width/2, cy, cx+width/2, cy, paint);
         } else {
             paint.setStrokeWidth((1.2f + 2f * displayed)*d);
-            paint.setAlpha((int)(65 + 190 * displayed));
+            paint.setAlpha((int)(190 + 65 * displayed));
             for (int i = 0; i < levels.length; i++) {
                 float position = i / (float)(levels.length - 1);
                 float height = speechHeight(i,d);
