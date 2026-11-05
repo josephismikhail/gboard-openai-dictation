@@ -11,7 +11,7 @@ its microphone as a predictable manual start/stop control:
 1. Tap the microphone to start recording.
 2. Speak naturally. Pauses do not finish the recording.
 3. A full-screen voice view shows a live waveform. Tap anywhere to finish,
-   or use the close button to cancel.
+   or use Android Back to cancel.
 4. OpenAI transcribes the audio and cleans up filler words, explicit corrections,
    punctuation, and lists. The result is inserted into the current text field.
 
@@ -77,9 +77,6 @@ are subject to their own eligibility and expiry rules.
 3. Long-press the keyboard microphone, enter your own OpenAI API key, and choose
    **Save on this phone**. The settings screen includes a field for trying dictation.
 
-The optional Messages shortcut is enabled separately; the regular keyboard
-microphone works without it.
-
 ## Bring your own API key
 
 After installing and selecting the keyboard, **long-press its idle microphone**
@@ -109,7 +106,7 @@ Speech produces large, bright peaks above a dim, flat quiet line. Tap anywhere o
 the layer to finish. The waveform contracts into a centered, gently breathing
 white shape while cleanup runs. The same transparent backdrop remains until the
 result is inserted, then the ordinary keyboard returns. The animation indicates
-activity, not estimated progress. Use the close button, Back, or a long press to
+activity, not estimated progress. Use Android Back or a long press to
 cancel recording or processing. There are no routine status toasts.
 Leaving the input field also cancels and restores
 the keyboard. A ten-minute recording limit prevents an accidentally forgotten
@@ -132,20 +129,6 @@ it; the selected range is preserved for replacement or cancel. Changing the
 message or selection invalidates the pending insertion rather than replacing
 text at a different target.
 
-## Optional Google Messages shortcut
-
-Long-press the keyboard microphone to open dictation settings, then choose **Set up Messages shortcut**. Enable **Messages dictation shortcut** in Android accessibility settings. This integration is optional and disabled until you enable it.
-
-In a supported Google Messages conversation with an empty draft, tap the existing gray waveform button to open the full-screen OpenAI dictation flow directly. The keyboard may appear briefly during the handoff. The keyboard's normal microphone also starts dictation; no button positions or icons are swapped. Once Messages replaces its voice-note button with Send, that button is left alone.
-
-Both entry points produce editable text; this shortcut does not create or send
-voice-note attachments. Use the keyboard microphone to add dictation to a draft
-that already contains text.
-
-Messages renders its own button, including its animation as the keyboard opens and closes. A transparent touch layer changes only its tap action. Taps are checked against the current control and conversation at both press and release; a stale hit area, a drag, or multiple fingers cannot trigger dictation. Messages search and unsupported fields keep normal keyboard dictation.
-
-This is a Messages-specific shortcut layer, not a modification of Google Messages. It never presses Send. It requires the observed English recorder label and identifiable conversation controls; unknown layouts keep their normal behavior. The accessibility service inspects Messages controls, the current draft and conversation header locally to validate the target. It does not save them. The existing OpenAI API key and dictation data handling remain the same. Disable the service in Android accessibility settings to restore the normal button behavior.
-
 ## Development status
 
 Implementation and validation are maintained on feature branches and reviewed
@@ -159,8 +142,7 @@ Instructions and test commands are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 Feature PRs document [full-screen dictation (#2)](https://github.com/josephismikhail/gboard-openai-dictation/pull/2),
 [contextual cleanup, spacing, and selection handling (#3)](https://github.com/josephismikhail/gboard-openai-dictation/pull/3),
-[centered voice animations (#4)](https://github.com/josephismikhail/gboard-openai-dictation/pull/4),
-and [the native Messages entry point (#5)](https://github.com/josephismikhail/gboard-openai-dictation/pull/5).
+and [centered voice animations (#4)](https://github.com/josephismikhail/gboard-openai-dictation/pull/4).
 
 ## License and attribution
 

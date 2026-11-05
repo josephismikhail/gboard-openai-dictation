@@ -18,28 +18,8 @@ import java.util.WeakHashMap;
 public final class VoiceRuntime {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final WeakHashMap<InputMethodService, Session> SESSIONS = new WeakHashMap<>();
-    private static final MessagesHandoff MESSAGES_HANDOFF = new MessagesHandoff();
-    /** In-process entry only; the accessibility shortcut must originate in a current Messages composer. */
-    public static boolean requestMessagesDictation(MessagesHandoff.Target target){
-        if(Looper.myLooper()!=Looper.getMainLooper() || isVoiceUiVisible()){
-            if(target!=null)try{target.release();}catch(RuntimeException ignored){}
-            return false;
-        }
-        boolean accepted=MESSAGES_HANDOFF.request(target,android.os.SystemClock.elapsedRealtime());
-        if(accepted){
-            MAIN.postDelayed(()->MESSAGES_HANDOFF.expire(android.os.SystemClock.elapsedRealtime()),MessagesHandoff.TIMEOUT_MS);
-            for(Session session:SESSIONS.values())session.scanLater();
-        }
-        return accepted;
-    }
-    public static void cancelMessagesHandoff(){MESSAGES_HANDOFF.cancel();}
-    public static boolean isVoiceUiVisible(){
-        for(Session session:SESSIONS.values())if(!session.closed && (session.panel!=null || session.ui.phase()!=VoiceUiState.Phase.IDLE))return true;
-        return false;
-    }
     public static void attach(InputMethodService ime) {
         Runnable attach=() -> {
-            MessagesAccessibilityService.keyboardTransition();
             Session session=SESSIONS.get(ime);
             if(session==null) { session=new Session(ime); SESSIONS.put(ime, session); }
             // Install the transparent action target before the keyboard's first paint.
@@ -50,8 +30,6 @@ public final class VoiceRuntime {
     }
     public static void detach(InputMethodService ime) {
         Session session=SESSIONS.remove(ime); if(session!=null) session.close();
-        if(Looper.myLooper()==Looper.getMainLooper())MessagesAccessibilityService.keyboardTransition();
-        else MAIN.post(MessagesAccessibilityService::keyboardTransition);
     }
     /** Runs after Gboard computes its normal editor insets, including each early return. */
     public static void adjustInsets(InputMethodService ime, InputMethodService.Insets insets) {
@@ -98,7 +76,7 @@ public final class VoiceRuntime {
         final VoiceUiState ui = new VoiceUiState();
         VoicePanel panel; View keyboardSurface; float surfaceAlpha; int surfaceAccessibility;
         MediaPlaybackGate mediaPlayback;
-        FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
+        FrameLayout overlay; VoiceWindowState windowState;
         android.window.OnBackInvokedCallback voiceBack;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         ViewTreeObserver.OnPreDrawListener preDrawListener;
@@ -157,11 +135,6 @@ public final class VoiceRuntime {
             if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin) button.setLayoutParams(p);
             if(panel!=null){positionPanel();button.setVisibility(View.INVISIBLE);overlay.bringToFront();}
             else {button.bringToFront();button.setVisibility(View.VISIBLE);}
-            android.view.inputmethod.EditorInfo info=ime.getCurrentInputEditorInfo();
-            if(MESSAGES_HANDOFF.consume(info==null?null:info.packageName,info==null?0:info.fieldId,
-                    !closed && ui.phase()==VoiceUiState.Phase.IDLE && ime.isInputViewShown()
-                    && ime.getCurrentInputConnection()!=null && nativeMic!=null,
-                    android.os.SystemClock.elapsedRealtime()))toggle();
         }
         View findMic(View v) {
             if(v==button || v==overlay || v.getVisibility()!=View.VISIBLE) return null;
@@ -224,9 +197,6 @@ public final class VoiceRuntime {
             overlay=new VoiceOverlay(ime,this::cancel);
             overlay.setAccessibilityPaneTitle("Voice dictation");
             overlay.addView(panel,new FrameLayout.LayoutParams(-1,-1));
-            closeButton=new CloseButton(ime,accent);
-            closeButton.setOnClickListener(v->cancel());
-            overlay.addView(closeButton,new FrameLayout.LayoutParams(Math.round(48*density),Math.round(48*density),Gravity.TOP|Gravity.RIGHT));
             windowState=new VoiceWindowState(ime.getWindow().getWindow());
             root.addView(overlay);positionPanel();
             panel.setFocusableInTouchMode(true);panel.requestFocus();
@@ -237,7 +207,6 @@ public final class VoiceRuntime {
             }
             candidate.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             button.setVisibility(View.INVISIBLE);overlay.bringToFront();root.requestLayout();
-            MessagesAccessibilityService.refreshActive();
             // Hold transient audio focus through capture and processing. This asks
             // cooperative players to pause without changing the media volume.
             try{mediaPlayback=new MediaPlaybackGate(ime);}catch(RuntimeException ignored){mediaPlayback=null;}
@@ -249,13 +218,6 @@ public final class VoiceRuntime {
             p.gravity=Gravity.TOP|Gravity.LEFT;p.leftMargin=-root.getPaddingLeft();p.topMargin=-root.getPaddingTop();
             FrameLayout.LayoutParams old=(FrameLayout.LayoutParams)overlay.getLayoutParams();
             if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin)overlay.setLayoutParams(p);
-            int edge=Math.round(24*ime.getResources().getDisplayMetrics().density),top=edge,right=edge;
-            WindowInsets insets=root.getRootWindowInsets();
-            if(insets!=null && insets.getDisplayCutout()!=null){
-                top+=insets.getDisplayCutout().getSafeInsetTop();right+=insets.getDisplayCutout().getSafeInsetRight();
-            }
-            FrameLayout.LayoutParams c=(FrameLayout.LayoutParams)closeButton.getLayoutParams();
-            if(c.topMargin!=top || c.rightMargin!=right){c.topMargin=top;c.rightMargin=right;closeButton.setLayoutParams(c);}
         }
         void showProcessing(){if(panel!=null)panel.setPhase(ui.phase());}
         void removePanel(){
@@ -267,12 +229,11 @@ public final class VoiceRuntime {
                 ime.getWindow().getWindow().getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(voiceBack);voiceBack=null;
             }
             if(panel!=null){panel.clear();panel=null;}
-            if(overlay!=null){if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);overlay=null;closeButton=null;}
+            if(overlay!=null){if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);overlay=null;}
             if(windowState!=null){windowState.restore();windowState=null;}
             if(keyboardSurface!=null){keyboardSurface.setAlpha(surfaceAlpha);keyboardSurface.setImportantForAccessibility(surfaceAccessibility);keyboardSurface=null;}
             if(button!=null)button.setVisibility(View.VISIBLE);
             if(root!=null)root.requestLayout();
-            MessagesAccessibilityService.refreshActive();
         }
         void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;editorContext=null;insertionAnchor=null;ui.reset();removePanel(); }
         void removeObservers(){
@@ -307,22 +268,5 @@ public final class VoiceRuntime {
             return super.dispatchKeyEvent(event);
         }
     }
-    private static final class CloseButton extends View {
-        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final int color;
-        CloseButton(android.content.Context context,int color){
-            super(context);this.color=color;setClickable(true);setFocusable(true);setContentDescription("Cancel dictation");
-        }
-        @Override protected void onDraw(Canvas canvas){
-            float d=getResources().getDisplayMetrics().density,cx=getWidth()/2f,cy=getHeight()/2f;
-            paint.setColor(color);paint.setStyle(Paint.Style.FILL);paint.setAlpha(isPressed()?45:18);
-            canvas.drawCircle(cx,cy,24*d,paint);
-            paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.8f*d);paint.setStrokeCap(Paint.Cap.ROUND);
-            canvas.drawLine(cx-5*d,cy-5*d,cx+5*d,cy+5*d,paint);canvas.drawLine(cx-5*d,cy+5*d,cx+5*d,cy-5*d,paint);
-        }
-        @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
-            super.onInitializeAccessibilityNodeInfo(info);info.setClassName(android.widget.Button.class.getName());
-        }
-    }
-
     private VoiceRuntime(){}
 }

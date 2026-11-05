@@ -1,11 +1,13 @@
 """Build the optional locally signed Android QA/setup harness after build.py."""
 from pathlib import Path
-import argparse,os,subprocess,zipfile
+import argparse,os,subprocess,sys,zipfile
 p=argparse.ArgumentParser();p.add_argument('--work',type=Path,required=True);p.add_argument('--sdk',type=Path,required=True);p.add_argument('--java',type=Path,required=True);a=p.parse_args()
 root=Path(__file__).resolve().parents[1];work=a.work.resolve();sdk=a.sdk.resolve();java=a.java.resolve()/'bin';tools=sdk/'build-tools/36.0.0';android=sdk/'platforms/android-36/android.jar'
 if work.is_relative_to(root):p.error('Use a private work directory outside this repository')
 def run(cmd):subprocess.run(list(map(str,cmd)),check=True)
-classes=work/'qa-classes';classes.mkdir(exist_ok=True)
+sys.path.insert(0,str(root))
+from build import reset_compiler_output
+classes=reset_compiler_output(work,'qa-classes')
 run([java/'javac.exe','--release','11','-encoding','UTF-8','-cp',os.pathsep.join(map(str,[android,work/'extension.jar'])),'-d',classes,*sorted((root/'tests/android').glob('*.java'))])
 jar=work/'qa.jar'
 with zipfile.ZipFile(jar,'w') as z:
