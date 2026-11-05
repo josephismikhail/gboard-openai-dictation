@@ -22,6 +22,15 @@ class HookTests(unittest.TestCase):
         once = hook_void_returns(self.fixture(), self.signature, self.call)
         self.assertEqual(once, hook_void_returns(once, self.signature, self.call))
 
+    def test_selection_hook_preserves_registers_and_covers_early_returns(self):
+        signature = 'onUpdateSelection(IIIIII)V'
+        call = 'invoke-static/range {p0 .. p4}, Lorg/gboardopenai/VoiceRuntime;->selectionChanged(Landroid/inputmethodservice/InputMethodService;IIII)V'
+        source = self.fixture().replace(self.signature, signature)
+        result = hook_void_returns(source, signature, call)
+        self.assertEqual(result.count(call + '\n    return-void'), 2)
+        self.assertIn('.locals 19', result)
+        self.assertEqual(result, hook_void_returns(result, signature, call))
+
     def test_unknown_or_ambiguous_method_fails_closed(self):
         for source in ('', self.fixture() + self.fixture()):
             with self.assertRaises(ValueError):

@@ -17,9 +17,10 @@ import org.gboardopenai.VoiceWindowInsets;
 /** Deterministic rendering and touch tests; no microphone or network request. */
 public final class VoicePanelChecks {
     private static final int WIDTH=480, HEIGHT=900, CENTER_Y=HEIGHT/2;
+    private static final int SCRIM=0x88000000;
     private static final class Panel extends VoicePanel {
         long clock=1000;
-        Panel(Context context){super(context,Color.BLACK,Color.CYAN);}
+        Panel(Context context){super(context,SCRIM,Color.CYAN);}
         @Override protected long frameTime(){return clock;}
     }
     public static void run(Context context) {
@@ -39,13 +40,13 @@ public final class VoicePanelChecks {
         if(info.isClickable() || !panel.getContentDescription().toString().contains("Processing"))throw new AssertionError("Processing accessibility");
         info.recycle();
         Bitmap bitmap=render(panel);
-        if(bitmap.getPixel(1,1)!=Color.BLACK)throw new AssertionError("Panel must be opaque");
+        if(bitmap.getPixel(1,1)!=SCRIM)throw new AssertionError("Panel must retain the translucent recording scrim");
         bitmap.recycle();panel.clear();
         if(panel.getKeepScreenOn())throw new AssertionError("Keep-screen-on leaked");
-        checkSpeechContrast(context);checkProcessingShape(context);checkInsets();
+        checkSpeechContrast(context);checkProcessingHasNoSignal(context);checkScrimComposition(context);checkInsets();
         for(int density:new int[]{160,320,480}){
             Configuration config=new Configuration(context.getResources().getConfiguration());config.densityDpi=density;
-            checkProcessingShape(context.createConfigurationContext(config));
+            checkProcessingHasNoSignal(context.createConfigurationContext(config));
             for(int[] size:new int[][]{{480,900},{900,480},{481,901}})
                 checkVerticalCenter(context.createConfigurationContext(config),size[0],size[1]);
         }
@@ -57,7 +58,6 @@ public final class VoicePanelChecks {
         panel.layout(0,0,width,height);panel.setPhase(VoiceUiState.Phase.LISTENING);
         for(int frame=0;frame<4;frame++){
             if(frame==1)panel.level(.45f);
-            if(frame==2)panel.setPhase(VoiceUiState.Phase.PROCESSING);
             panel.clock+=frame>=2?600:16;
             Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);panel.draw(new Canvas(bitmap));
             int top=height,bottom=-1;
@@ -85,23 +85,33 @@ public final class VoicePanelChecks {
         if(!speaking.getKeepScreenOn())throw new AssertionError("Silence must not finish recording");
         silent.recycle();active.recycle();paused.recycle();quiet.clear();speaking.clear();
     }
-    private static void checkProcessingShape(Context context){
+    private static void checkProcessingHasNoSignal(Context context){
         Panel panel=makePanel(context);panel.level(.45f);Bitmap spoken=render(panel);spoken.recycle();
         panel.setPhase(VoiceUiState.Phase.PROCESSING);panel.clock+=500;
         Bitmap first=render(panel);
-        int height=signalHeight(first),width=signalWidth(first);
-        float density=context.getResources().getDisplayMetrics().density;
-        if(height<Math.min(100*density,WIDTH*.35f) || height>Math.min(145*density,WIDTH*.65f)
-                || Math.abs(width-height)>WIDTH*.1f)throw new AssertionError("Processing shape should be large and rounded at this density");
+        if(signalHeight(first)!=0)throw new AssertionError("Processing must not leave a full-screen signal or shape");
         if(panel.getKeepScreenOn())throw new AssertionError("Processing must release keep-screen-on");
-        if(android.animation.ValueAnimator.areAnimatorsEnabled()){
-            panel.clock+=800;Bitmap next=render(panel);
-            int different=0;
-            for(int y=0;y<HEIGHT;y+=2)for(int x=0;x<WIDTH;x+=2)if(first.getPixel(x,y)!=next.getPixel(x,y))different++;
-            if(different<100)throw new AssertionError("Processing shape did not breathe or morph");
-            next.recycle();
-        }
+        panel.clock+=800;Bitmap next=render(panel);
+        if(!first.sameAs(next))throw new AssertionError("Detached processing panel must not animate a shape");
+        next.recycle();
         first.recycle();panel.clear();
+    }
+    private static void checkScrimComposition(Context context){
+        Panel panel=makePanel(context);
+        Bitmap image=Bitmap.createBitmap(WIDTH,HEIGHT,Bitmap.Config.ARGB_8888);
+        Canvas canvas=new Canvas(image);
+        canvas.drawColor(Color.WHITE);
+        android.graphics.Paint paint=new android.graphics.Paint();paint.setColor(Color.RED);
+        canvas.drawRect(0,0,10,10,paint);
+        panel.draw(canvas);
+        int white=image.getPixel(20,5),red=image.getPixel(5,5);
+        int expected=255-Color.alpha(SCRIM);
+        if(Math.abs(Color.red(white)-expected)>1 || Color.red(white)!=Color.green(white)
+                || Color.red(red)!=Color.red(white) || Color.green(red)!=0 || Color.blue(red)!=0)
+            throw new AssertionError("Scrim must dim visible content uniformly without blur");
+        if(image.getPixel(9,5)!=red || image.getPixel(10,5)!=white)
+            throw new AssertionError("Scrim blurred the underlying edge");
+        image.recycle();panel.clear();
     }
     private static void checkInsets(){
         InputMethodService.Insets insets=new InputMethodService.Insets();
@@ -119,9 +129,5 @@ public final class VoicePanelChecks {
     private static int signalHeight(Bitmap image){
         int top=HEIGHT,bottom=-1;for(int y=0;y<HEIGHT;y++)if(Color.green(image.getPixel(WIDTH/2,y))>20){top=Math.min(top,y);bottom=y;}
         return bottom<0?0:bottom-top+1;
-    }
-    private static int signalWidth(Bitmap image){
-        int left=WIDTH,right=-1;for(int x=0;x<WIDTH;x++)if(Color.green(image.getPixel(x,CENTER_Y))>20){left=Math.min(left,x);right=x;}
-        return right<0?0:right-left+1;
     }
 }
