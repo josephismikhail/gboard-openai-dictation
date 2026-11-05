@@ -16,6 +16,14 @@ public final class VoiceSettingsActivity extends Activity {
         super.onCreate(state);
         ScrollView scroll=new ScrollView(this);LinearLayout content=new LinearLayout(this);content.setOrientation(1);
         int pad=(int)(20*getResources().getDisplayMetrics().density);content.setPadding(pad,pad,pad,pad);scroll.addView(content);setContentView(scroll);
+        scroll.setOnApplyWindowInsetsListener((view,insets)->{
+            android.graphics.Insets bars=insets.getInsets(android.view.WindowInsets.Type.systemBars());
+            android.graphics.Insets keyboard=insets.getInsets(android.view.WindowInsets.Type.ime());
+            scroll.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,keyboard.bottom));
+            scroll.post(()->{View focused=getCurrentFocus();if(focused!=null){android.graphics.Rect area=new android.graphics.Rect();focused.getDrawingRect(area);focused.requestRectangleOnScreen(area,true);}});
+            return insets;
+        });
+        scroll.requestApplyInsets();
         setTitle("OpenAI dictation");
         TextView heading=new TextView(this);heading.setText("OpenAI dictation");heading.setTextSize(24);content.addView(heading);
         TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. No account or server is provided by this project.\n\nTap the keyboard microphone to start and tap again to stop. Pauses do not end a recording. Long-press the idle microphone to return here.");content.addView(info);
