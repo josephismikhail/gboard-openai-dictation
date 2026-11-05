@@ -14,7 +14,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.WeakHashMap;
 
-/** In-keyboard microphone: tap to start/finish, long-press to cancel, no routine toasts. */
+/** Stock microphone entry point, full-screen listening panel, no routine toasts. */
 public final class VoiceRuntime {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final WeakHashMap<InputMethodService, Session> SESSIONS = new WeakHashMap<>();
@@ -28,9 +28,18 @@ public final class VoiceRuntime {
     public static void detach(InputMethodService ime) {
         Session session=SESSIONS.remove(ime); if(session!=null) session.close();
     }
+    /** Runs after Gboard computes its normal editor insets, including each early return. */
+    public static void adjustInsets(InputMethodService ime, InputMethodService.Insets insets) {
+        Session session=SESSIONS.get(ime);
+        if(session==null || session.overlay==null)return;
+        int[] location=new int[2];session.overlay.getLocationInWindow(location);
+        VoiceWindowInsets.apply(insets,new Rect(location[0],location[1],
+            location[0]+session.overlay.getWidth(),location[1]+session.overlay.getHeight()));
+    }
     public static JSONObject inspect(InputMethodService ime) throws Exception {
         JSONObject result=new JSONObject(); Session s=SESSIONS.get(ime);
         result.put("attached",s!=null).put("micFound",s!=null && s.button!=null);
+        if(s!=null)result.put("phase",s.ui.phase().name()).put("panelVisible",s.panel!=null).put("fullScreen",s.overlay!=null);
         JSONArray rows=new JSONArray();
         if (ime.getWindow()!=null) describe(ime.getWindow().getWindow().getDecorView(),rows,0);
         return result.put("views",rows);
@@ -52,6 +61,9 @@ public final class VoiceRuntime {
     private static final class Session {
         final InputMethodService ime;
         VoiceEngine engine; InputConnection editor; MicButton button; View nativeMic;
+        final VoiceUiState ui = new VoiceUiState();
+        VoicePanel panel; View keyboardSurface; float surfaceAlpha; int surfaceAccessibility;
+        FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         int generation; boolean closed, reportedMissing; long lastScan;
         Session(InputMethodService ime) { this.ime=ime; }
@@ -64,8 +76,13 @@ public final class VoiceRuntime {
             View decor=ime.getWindow().getWindow().getDecorView();
             if(!(decor instanceof FrameLayout)) return;
             if(root!=decor) {
-                removeButton(); root=(ViewGroup)decor;
-                layoutListener=() -> { long now=android.os.SystemClock.elapsedRealtime(); if(now-lastScan>200) {lastScan=now; MAIN.post(this::scan);} };
+                cancel(); removeButton(); root=(ViewGroup)decor;
+                layoutListener=() -> {
+                    // Window expansion must update geometry even when microphone discovery is throttled.
+                    if(overlay!=null)positionPanel();
+                    long now=android.os.SystemClock.elapsedRealtime();
+                    if(now-lastScan>200) {lastScan=now; MAIN.post(this::scan);}
+                };
                 root.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
             }
             View target=findMic(root);
@@ -91,10 +108,11 @@ public final class VoiceRuntime {
             p.leftMargin=bounds.left-root.getPaddingLeft();p.topMargin=bounds.top-root.getPaddingTop();p.gravity=Gravity.TOP|Gravity.LEFT;
             FrameLayout.LayoutParams old=(FrameLayout.LayoutParams)button.getLayoutParams();
             if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin) button.setLayoutParams(p);
-            button.bringToFront(); button.setVisibility(View.VISIBLE);
+            if(panel!=null){positionPanel();button.setVisibility(View.INVISIBLE);overlay.bringToFront();}
+            else {button.bringToFront();button.setVisibility(View.VISIBLE);}
         }
         View findMic(View v) {
-            if(v==button || v.getVisibility()!=View.VISIBLE) return null;
+            if(v==button || v==overlay || v.getVisibility()!=View.VISIBLE) return null;
             String d=v.getContentDescription()==null?"":v.getContentDescription().toString().toLowerCase(java.util.Locale.ROOT);
             String id="";try{id=v.getResources().getResourceEntryName(v.getId()).toLowerCase(java.util.Locale.ROOT);}catch(Exception ignored){}
             float density=ime.getResources().getDisplayMetrics().density;
@@ -107,17 +125,21 @@ public final class VoiceRuntime {
         }
         void toggle() {
             if(button==null || closed) return;
-            if(button.state==1 || button.state==3) { button.state(2); engine.stop(); return; }
-            if(button.state!=0)return;
+            if(ui.stop()) { if(panel!=null)panel.setPhase(ui.phase()); if(engine!=null)engine.stop(); return; }
+            if(ui.phase()!=VoiceUiState.Phase.IDLE)return;
             editor=ime.getCurrentInputConnection(); if(editor==null)return;
+            if(!showPanel()){editor=null;Toast.makeText(ime,"Could not open the voice panel. Please reopen the keyboard.",Toast.LENGTH_LONG).show();return;}
             editor.finishComposingText(); int current=++generation;
-            button.state(3);
+            ui.begin();panel.setPhase(ui.phase());
             engine=new VoiceEngine(ime,new VoiceEngine.Listener(){
-                public void recording(){ MAIN.post(()->{if(current==generation && button!=null)button.state(1);}); }
+                public void recording(){ MAIN.post(()->{if(current==generation && !closed){ui.recording();if(panel!=null)panel.setPhase(ui.phase());}}); }
+                public void level(float value){ MAIN.post(()->{if(current==generation && panel!=null && ui.phase()==VoiceUiState.Phase.LISTENING)panel.level(value);}); }
                 public void result(String text){ MAIN.post(()->{
                     if(current!=generation || closed)return;
-                    if(editor==ime.getCurrentInputConnection() && text!=null && !text.isEmpty())editor.commitText(text,1);
-                    editor=null;engine=null;if(button!=null)button.state(0);
+                    if(editor==ime.getCurrentInputConnection() && text!=null && !text.isEmpty()){
+                        if(!DictationInsertion.commit(editor,text,ime.getCurrentInputEditorInfo()))Toast.makeText(ime,"Could not insert dictation into this text field.",Toast.LENGTH_LONG).show();
+                    }
+                    editor=null;engine=null;ui.reset();removePanel();
                 }); }
                 public void error(String message){ MAIN.post(()->{
                     if(current!=generation || closed)return;
@@ -127,7 +149,65 @@ public final class VoiceRuntime {
             });
             engine.start();
         }
-        void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;if(button!=null)button.state(0); }
+        boolean showPanel(){
+            float density=ime.getResources().getDisplayMetrics().density;
+            View candidate=null;
+            for(View v=nativeMic;v!=null && v!=root;v=v.getParent() instanceof View?(View)v.getParent():null){
+                if(candidate!=null && !VoiceSurfaceBounds.canExpand(candidate.getHeight(),v.getHeight(),density))break;
+                if(v.getWidth()>=root.getWidth()*.65f && v.getHeight()>120*density)candidate=v;
+            }
+            if(candidate==null || candidate.getHeight()<=0)return false;
+            keyboardSurface=candidate;surfaceAlpha=candidate.getAlpha();surfaceAccessibility=candidate.getImportantForAccessibility();
+            int background=sampleBackground(candidate);
+            double luminance=(.2126*Color.red(background)+.7152*Color.green(background)+.0722*Color.blue(background))/255;
+            int accent=luminance<.5?Color.rgb(216,220,226):Color.rgb(60,64,67);
+            panel=new VoicePanel(ime,background,accent);
+            panel.setOnClickListener(v->toggle());
+            panel.setOnLongClickListener(v->{cancel();return true;});
+            overlay=new FrameLayout(ime);
+            overlay.setAccessibilityPaneTitle("Voice dictation");
+            overlay.addView(panel,new FrameLayout.LayoutParams(-1,-1));
+            closeButton=new CloseButton(ime,accent);
+            closeButton.setOnClickListener(v->cancel());
+            overlay.addView(closeButton,new FrameLayout.LayoutParams(Math.round(48*density),Math.round(48*density),Gravity.TOP|Gravity.RIGHT));
+            windowState=new VoiceWindowState(ime.getWindow().getWindow());
+            root.addView(overlay);positionPanel();
+            candidate.setAlpha(0);candidate.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            button.setVisibility(View.INVISIBLE);overlay.bringToFront();root.requestLayout();
+            return true;
+        }
+        int sampleBackground(View surface){
+            boolean dark=(ime.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            int fallback=dark?Color.rgb(32,37,43):Color.rgb(232,237,244);
+            Bitmap sample=Bitmap.createBitmap(1,1,Bitmap.Config.ARGB_8888);
+            try{
+                Canvas canvas=new Canvas(sample);canvas.translate(-1,-surface.getHeight()/2f);surface.draw(canvas);
+                int color=sample.getPixel(0,0);return Color.alpha(color)>240?color:fallback;
+            }catch(Exception ignored){return fallback;}finally{sample.recycle();}
+        }
+        void positionPanel(){
+            if(overlay==null)return;
+            FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(root.getWidth(),root.getHeight());
+            p.gravity=Gravity.TOP|Gravity.LEFT;p.leftMargin=-root.getPaddingLeft();p.topMargin=-root.getPaddingTop();
+            FrameLayout.LayoutParams old=(FrameLayout.LayoutParams)overlay.getLayoutParams();
+            if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin)overlay.setLayoutParams(p);
+            int edge=Math.round(24*ime.getResources().getDisplayMetrics().density),top=edge,right=edge;
+            WindowInsets insets=root.getRootWindowInsets();
+            if(insets!=null && insets.getDisplayCutout()!=null){
+                top+=insets.getDisplayCutout().getSafeInsetTop();right+=insets.getDisplayCutout().getSafeInsetRight();
+            }
+            FrameLayout.LayoutParams c=(FrameLayout.LayoutParams)closeButton.getLayoutParams();
+            if(c.topMargin!=top || c.rightMargin!=right){c.topMargin=top;c.rightMargin=right;closeButton.setLayoutParams(c);}
+        }
+        void removePanel(){
+            if(panel!=null){panel.clear();panel=null;}
+            if(overlay!=null){if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);overlay=null;closeButton=null;}
+            if(windowState!=null){windowState.restore();windowState=null;}
+            if(keyboardSurface!=null){keyboardSurface.setAlpha(surfaceAlpha);keyboardSurface.setImportantForAccessibility(surfaceAccessibility);keyboardSurface=null;}
+            if(button!=null)button.setVisibility(View.VISIBLE);
+            if(root!=null)root.requestLayout();
+        }
+        void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;ui.reset();removePanel(); }
         void removeButton(){
             if(nativeMic!=null){nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
             if(root!=null && layoutListener!=null && root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
@@ -137,20 +217,22 @@ public final class VoiceRuntime {
         void close(){closed=true;cancel();removeButton();root=null;}
     }
     private static final class MicButton extends View {
-        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG); int state;
-        MicButton(android.content.Context context){ super(context);setClickable(true);setFocusable(true);state(0); }
-        void state(int value){state=value;setContentDescription(value==1?"Stop OpenAI dictation":value==2?"Cleaning dictation":value==3?"Starting microphone":"Start OpenAI dictation");invalidate();}
+        MicButton(android.content.Context context){ super(context);setClickable(true);setFocusable(true);setContentDescription("Start OpenAI dictation"); }
+    }
+    private static final class CloseButton extends View {
+        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final int color;
+        CloseButton(android.content.Context context,int color){
+            super(context);this.color=color;setClickable(true);setFocusable(true);setContentDescription("Cancel dictation");
+        }
         @Override protected void onDraw(Canvas canvas){
-            super.onDraw(canvas);
-            if(state==0)return;
             float d=getResources().getDisplayMetrics().density,cx=getWidth()/2f,cy=getHeight()/2f;
-            paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2*d);
-            paint.setColor(state==1?Color.rgb(255,90,95):Color.rgb(255,193,7));
-            float phase=(android.os.SystemClock.uptimeMillis()%1200)/1200f;
-            paint.setAlpha(state==1?(int)(155+90*Math.sin(phase*Math.PI*2)):255);
-            float radius=Math.min(getWidth(),getHeight())/2f-3*d;
-            canvas.drawArc(cx-radius,cy-radius,cx+radius,cy+radius,state==1?0:phase*360,state==1?360:240,false,paint);
-            postInvalidateOnAnimation();
+            paint.setColor(color);paint.setStyle(Paint.Style.FILL);paint.setAlpha(isPressed()?45:18);
+            canvas.drawCircle(cx,cy,24*d,paint);
+            paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.8f*d);paint.setStrokeCap(Paint.Cap.ROUND);
+            canvas.drawLine(cx-5*d,cy-5*d,cx+5*d,cy+5*d,paint);canvas.drawLine(cx-5*d,cy+5*d,cx+5*d,cy-5*d,paint);
+        }
+        @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
+            super.onInitializeAccessibilityNodeInfo(info);info.setClassName(android.widget.Button.class.getName());
         }
     }
 

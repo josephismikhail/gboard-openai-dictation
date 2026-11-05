@@ -11,7 +11,7 @@ jar=work/'qa.jar'
 with zipfile.ZipFile(jar,'w') as z:
     for f in classes.rglob('*.class'):z.write(f,f.relative_to(classes).as_posix())
 dex=work/'qa-dex';dex.mkdir(exist_ok=True);run([tools/'d8.bat','--release','--min-api','29','--lib',android,'--classpath',work/'helpers.jar','--output',dex,jar])
-manifest=work/'qa-manifest.xml';manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.gboardopenai.test"><uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/><application android:label="Local dictation QA"/><instrumentation android:name="org.gboardopenai.test.SetupInstrumentation" android:targetPackage="org.gboardopenai.keyboard"/></manifest>')
+manifest=work/'qa-manifest.xml';manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.gboardopenai.test"><uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/><application android:label="Local dictation QA"><activity android:name="org.gboardopenai.test.VoiceTestActivity" android:exported="true"/><activity android:name="org.gboardopenai.test.FullscreenVoicePreviewActivity" android:exported="true"/></application><instrumentation android:name="org.gboardopenai.test.SetupInstrumentation" android:targetPackage="org.gboardopenai.keyboard"/></manifest>')
 unsigned=work/'qa-unsigned.apk';run([tools/'aapt2.exe','link','-I',android,'--manifest',manifest,'-o',unsigned])
 with zipfile.ZipFile(unsigned,'a') as z:z.write(dex/'classes.dex','classes.dex')
 aligned=work/'qa-aligned.apk';run([tools/'zipalign.exe','-f','4',unsigned,aligned])

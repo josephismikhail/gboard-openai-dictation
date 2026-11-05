@@ -10,9 +10,16 @@ its microphone as a predictable push-to-talk control:
 
 1. Tap the microphone to start recording.
 2. Speak naturally. Pauses do not finish the recording.
-3. Tap the same microphone again to stop.
+3. A full-screen voice view shows a live waveform. Tap anywhere to finish,
+   or use the close button to cancel.
 4. OpenAI transcribes the audio and cleans up filler words, explicit corrections,
    punctuation, and lists. The result is inserted into the current text field.
+
+In normal text fields, insertion adds a space for continuing by typing or
+dictating again, while respecting nearby whitespace and punctuation. Existing
+spaces are reused. Email, URL, password and numeric fields keep the exact result.
+Only the two characters next to each side of the selection are checked locally
+for spacing; this context is not sent to OpenAI.
 
 This project does not add PixelBoard's visual changes, feature-unlocking options,
 or update service. It is an independent repository, not a fork of PixelBoard.
@@ -68,10 +75,22 @@ and is not repopulated with the stored key. App backups are disabled for this
 independently built package. Do not commit keys, recordings, personal vocabulary,
 private preferences, signing keys, or your base APKs.
 
-During recording, a small colored ring identifies the active microphone. During
-processing, the ring spins. The stock microphone artwork stays visible. Leaving
-the input field cancels the session. A ten-minute recording limit prevents an
-accidentally forgotten microphone from running indefinitely.
+During recording, the voice view fills the screen. Its
+waveform reflects the microphone level and settles during silence; silence does
+not stop recording. Speech produces large, bright peaks above a dim, flat quiet
+line. After you tap the view, the waveform contracts into a large, gently
+breathing rounded shape until the result is inserted and the regular keyboard
+returns. This animation indicates activity, not estimated progress. The view
+follows the keyboard background with a contrasting neutral signal and adds no
+routine toasts. Use the close button, Back, or a long press to cancel.
+Leaving the input field also cancels and restores
+the keyboard. A ten-minute recording limit prevents an accidentally forgotten
+microphone from running indefinitely. System-disabled animations are respected.
+
+The full-screen view stays in the keyboard's own window, preserving its connection
+to the original text field. It needs no floating-overlay permission or separate
+recording activity. System navigation remains available; temporary window and
+touch-region changes are restored when dictation ends.
 
 ## Development status
 

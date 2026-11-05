@@ -26,7 +26,7 @@ public final class VoiceSettingsActivity extends Activity {
         scroll.requestApplyInsets();
         setTitle("OpenAI dictation");
         TextView heading=new TextView(this);heading.setText("OpenAI dictation");heading.setTextSize(24);content.addView(heading);
-        TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. No account or server is provided by this project.\n\nTap the keyboard microphone to start and tap again to stop. Pauses do not end a recording. Long-press the idle microphone to return here.");content.addView(info);
+        TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. No account or server is provided by this project.\n\nTap the keyboard microphone to start, then tap anywhere in the full-screen voice view to finish. Pauses do not end a recording. Use the close button or Back to cancel. Long-press the idle microphone to return here.");content.addView(info);
         JSONObject existing;try{existing=VoiceConfig.load(this);}catch(Exception e){existing=new JSONObject();}
         TextView status=new TextView(this);status.setText(existing.has("key")?"API key saved on this phone":"No API key configured");content.addView(status);
         EditText key=new EditText(this);key.setHint("OpenAI API key");key.setSingleLine(true);key.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);content.addView(key);

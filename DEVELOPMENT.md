@@ -71,5 +71,59 @@ only into the original editor, cancels when the editor is dismissed, and returns
 to idle after network errors. Compare the stock keyboard and settings screen to
 confirm no unrelated visual or feature changes.
 
+Voice-panel validation: tap the center and edges of the panel to stop, tap again
+while processing (must not restart recording), and dismiss the keyboard while
+recording/processing (must cancel without inserting into another editor).
+Check light/dark themes, full-screen coverage, a flat waveform in silence,
+and restoration of the original keyboard height after insertion or an error. JVM tests cover PCM
+level measurement and the fast-stop/late-start race. The optional locally signed
+Android QA harness provides an empty text field and `panelTest` instrumentation
+for touch coverage, accessibility, opacity, teardown, deterministic animation
+rendering and window restoration; it needs no API key. Python tests verify that
+the insets hook runs at every normal return, preserves other methods and is
+idempotent across repeated builds.
+
+```sh
+python tools/build_setup.py --work ../gboard-openai-private --sdk "$ANDROID_HOME" --java "$JAVA_HOME"
+adb install -r ../gboard-openai-private/qa.apk
+adb shell am instrument -w -e action panelTest org.gboardopenai.test/.SetupInstrumentation
+adb shell am instrument -w -e action insertionTest org.gboardopenai.test/.SetupInstrumentation
+adb shell ime set org.gboardopenai.keyboard/com.android.inputmethod.latin.LatinIME
+adb shell am start -S -n org.gboardopenai.test/.VoiceTestActivity
+```
+
+Instrumentation may reset the default keyboard, so always restore it afterward.
+The insertion checks use Android's actual editable input connection to verify
+consecutive dictations, continuing by typing, selected-text replacement (including possessives), reuse
+of an existing space, punctuation and structured fields. All examples are
+synthetic and no API request is needed.
+Remove the temporary harness with `adb uninstall org.gboardopenai.test` when done.
+
+To test full-screen touch routing in the actual IME without a microphone or API
+request, start the following command, then use a second terminal to select the
+keyboard and open `VoiceTestActivity` as above within ten seconds:
+
+```sh
+adb shell am instrument -w -e action windowTest org.gboardopenai.test/.SetupInstrumentation
+```
+
+This check only operates on the QA package's editor. It opens the real voice
+window with a synthetic recording state, taps above the old keyboard area to
+verify the insets hook, cancels during processing, checks the original input
+connection and window attributes, tests a resize while microphone discovery is
+throttled, then tests Back cancellation. The rendering checks also exercise
+mdpi, xhdpi and xxhdpi contexts without changing the phone's display settings. The reflection
+used to arrange this synthetic state exists only in the optional QA APK.
+
+The optional full-screen interaction study runs entirely inside the QA app:
+
+```sh
+adb shell am start -n org.gboardopenai.test/.FullscreenVoicePreviewActivity
+```
+
+It simulates speaking, tap-to-finish, processing and a sample result without
+recording audio, calling a model or changing the live keyboard. Its explicit
+preview labels distinguish it from real dictation.
+
 Do not add telemetry, an update service, or a hosted proxy. Do not publish a
 Google-derived APK in releases. Public CI tests source and mock services only.
