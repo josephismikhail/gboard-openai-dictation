@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse,hashlib,json,os,re,secrets,shutil,subprocess,sys,urllib.request,zipfile
 from tools.binary_xml import patch,NEW
 from tools.smali_hooks import hook_void_returns
+from tools.accessibility_split import build_split
 
 ROOT=Path(__file__).resolve().parent
 
@@ -102,6 +103,7 @@ def main():
         s=s[:m.start()]+m.group(1)+body+m.group(3)+s[m.end():];f.write_text(s)
     changed_dex.add(f.relative_to(decoded).parts[0])
     basebuilt=work/'reassembled.apk';run([exe('java'),'-jar',apktool,'b',decoded,'-o',basebuilt])
+    messages_split,messages_resource=build_split(tool('aapt2'),android,stock/'base.apk',work)
     keystore=work/'signing.p12';passwordfile=work/'signing-password.txt'
     if not keystore.exists():passwordfile.write_text(secrets.token_urlsafe(40))
     os.environ['GBOARD_SIGNING_PASSWORD']=passwordfile.read_text().strip()
@@ -116,7 +118,7 @@ def main():
                     if info.filename.startswith('META-INF/') and info.filename.upper().endswith(('.SF','.RSA','.DSA','.EC','MANIFEST.MF')):continue
                     data=original.read(info.filename)
                     if source.name=='base.apk' and info.filename in mapping:data=assembled.read(info.filename)
-                    elif info.filename=='AndroidManifest.xml':data=patch(data,source.name=='base.apk')
+                    elif info.filename=='AndroidManifest.xml':data=patch(data,source.name=='base.apk',messages_resource if source.name=='base.apk' else None)
                     elif info.filename.startswith('res/') and info.filename.endswith('.xml'):data=patch(data)
                     target.writestr(info,data)
                 if source.name=='base.apk':
@@ -125,6 +127,10 @@ def main():
             aligned=work/(source.stem+'-aligned.apk');run([tool('zipalign'),'-P','16','-f','4',unsigned,aligned])
             run([tool('apksigner'),'sign','--ks',keystore,'--ks-key-alias','gboard-openai','--ks-pass','env:GBOARD_SIGNING_PASSWORD','--out',output/source.name,aligned])
             run([tool('apksigner'),'verify',output/source.name])
+    messages_aligned=work/'messages-resources'/'aligned.apk'
+    run([tool('zipalign'),'-P','16','-f','4',messages_split,messages_aligned])
+    run([tool('apksigner'),'sign','--ks',keystore,'--ks-key-alias','gboard-openai','--ks-pass','env:GBOARD_SIGNING_PASSWORD','--out',output/'split_openai_messages.apk',messages_aligned])
+    run([tool('apksigner'),'verify',output/'split_openai_messages.apk'])
     print('Built signed APK set in',output)
 
 if __name__=='__main__':main()
