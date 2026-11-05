@@ -23,7 +23,20 @@ public final class SetupInstrumentation extends Instrumentation {
             String action=arguments.getString("action", "verify");
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
             String alias="gboard-openai-migration";
-            if("publicKey".equals(action)){
+            if("windowTest".equals(action)){
+                VoiceWindowIntegrationChecks.run(this);
+                result.putString("windowTests","passed: real full-screen window, upper-screen stop, processing cancel, editor connection, window restoration, Back cancellation");
+            } else if("insertionTest".equals(action)){
+                final Throwable[] failure={null};
+                runOnMainSync(()->{try{DictationInsertionChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
+                if(failure[0]!=null)throw new AssertionError(failure[0]);
+                result.putString("insertionTests","passed: repeated dictation, typing continuation, existing space, selection replacement, punctuation, structured fields");
+            } else if("panelTest".equals(action)){
+                final Throwable[] failure={null};
+                runOnMainSync(()->{try{VoicePanelChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
+                if(failure[0]!=null)throw new AssertionError(failure[0]);
+                result.putString("panelTests","passed: full-screen touch coverage, duplicate stop, accessibility, opacity, teardown, speech contrast, breathing shape, inset and window restoration");
+            } else if("publicKey".equals(action)){
                 if(store.containsAlias(alias))store.deleteEntry(alias);
                 KeyPairGenerator generator=KeyPairGenerator.getInstance("RSA","AndroidKeyStore");
                 generator.initialize(new KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_DECRYPT)
@@ -42,6 +55,7 @@ public final class SetupInstrumentation extends Instrumentation {
                 VoiceConfig.save(getTargetContext(),config);store.deleteEntry(alias);
                 result.putString("status","Encrypted configuration saved");
             } else if("inspect".equals(action)){
+                Thread.sleep(Math.min(10000, Math.max(0, Integer.parseInt(arguments.getString("delayMs", "0")))));
                 final JSONObject[] snapshot=new JSONObject[1];
                 runOnMainSync(()->{try{snapshot[0]=VoiceRuntime.inspectActive();}catch(Exception ignored){}});
                 result.putString("snapshot",snapshot[0]==null?"{}":snapshot[0].toString());
@@ -57,6 +71,10 @@ public final class SetupInstrumentation extends Instrumentation {
                 result.putString("transcription","gpt-live-transcribe");result.putString("cleanup","gpt-6.1-sol/ultrafast/low");
             }
             finish(-1,result);
-        }catch(Throwable error){result.putString("error",error.getClass().getSimpleName());finish(0,result);}
+        }catch(Throwable error){
+            result.putString("error",error.getClass().getSimpleName());
+            if(arguments.getString("action","").endsWith("Test"))result.putString("checkFailure",String.valueOf(error.getMessage()));
+            finish(0,result);
+        }
     }
 }
