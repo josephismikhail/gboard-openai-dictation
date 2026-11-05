@@ -18,8 +18,8 @@ public final class DictationInsertionChecks {
 
         field.setText("");field.setSelection(0);
         insert(editor,info,"Hello.");insert(editor,info,"Another sentence.");
-        expect(field,"Hello. Another sentence. ");
-        editor.commitText("Typed next",1);
+        expect(field,"Hello. Another sentence.");
+        editor.commitText(" Typed next",1);
         expect(field,"Hello. Another sentence. Typed next");
 
         field.setText("Hello friend");field.setSelection(5);
@@ -37,7 +37,12 @@ public final class DictationInsertionChecks {
         insert(editor,info,"Jane");expect(field,"Jane's book");
 
         field.setText("");field.setSelection(0);
-        insert(editor,info,"(");insert(editor,info,"hello");expect(field,"(hello ");
+        insert(editor,info,"(");insert(editor,info,"hello");expect(field,"(hello");
+
+        field.setText("- Apples\n- Pears");field.setSelection(field.length());
+        insert(editor,info,"\n- Bananas");expect(field,"- Apples\n- Pears\n- Bananas");
+        field.setText("- Apples\n- Pears");field.setSelection("- Apples\n".length());
+        insert(editor,info,"- Bananas\n");expect(field,"- Apples\n- Bananas\n- Pears");
 
         for(int type:new int[]{InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
                 InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI,

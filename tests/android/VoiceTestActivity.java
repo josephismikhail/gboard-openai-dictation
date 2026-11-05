@@ -18,6 +18,11 @@ public final class VoiceTestActivity extends Activity {
         field.setPadding(p,5*p,p,p);
         setContentView(field);
         field.requestFocus();
+        if(getIntent().getBooleanExtra("selectionTest",false)){
+            field.setText("Please make the red button blue.");
+            field.setSelection(16,19);
+            field.postDelayed(()->{field.performLongClick();field.setSelection(16,19);},400);
+        }
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
     }
 }

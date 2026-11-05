@@ -17,14 +17,21 @@ import java.util.Map;
 import org.gboardopenai.VoiceRuntime;
 import org.gboardopenai.VoiceUiState;
 import org.gboardopenai.VoicePanel;
+import org.gboardopenai.DictationContext;
+import org.gboardopenai.EditorContext;
+import org.gboardopenai.DictationInsertion;
 
 /** Exercises the installed IME's real window and touch routing, without recording or API calls. */
 public final class VoiceWindowIntegrationChecks {
     private final Instrumentation instrumentation;
     private Object session;private InputMethodService ime;
+    private boolean selectionCase;
     private final float[] point=new float[2];
     private VoiceWindowIntegrationChecks(Instrumentation instrumentation){this.instrumentation=instrumentation;}
     public static void run(Instrumentation instrumentation) throws Exception {new VoiceWindowIntegrationChecks(instrumentation).run();}
+    public static void runSelection(Instrumentation instrumentation) throws Exception {
+        VoiceWindowIntegrationChecks check=new VoiceWindowIntegrationChecks(instrumentation);check.selectionCase=true;check.run();
+    }
     private static Object field(Object object,String name)throws Exception{
         Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);
     }
@@ -63,16 +70,23 @@ public final class VoiceWindowIntegrationChecks {
             });
         }
         if(session==null)throw new AssertionError("QA editor and attached microphone required");
+        if(selectionCase)SystemClock.sleep(900);
         InputConnection[] connection={null};WindowManager.LayoutParams original=new WindowManager.LayoutParams();View[] surface={null};float[] alpha={0};
+        DictationContext[] snapshot={null};
         try{
             main(()->{
                 requireTestEditor();connection[0]=ime.getCurrentInputConnection();original.copyFrom(ime.getWindow().getWindow().getAttributes());
+                if(selectionCase && !"red".contentEquals(connection[0].getSelectedText(0)))throw new AssertionError("Synthetic selected word missing before recording");
+                if(selectionCase){snapshot[0]=EditorContext.capture(connection[0],ime.getCurrentInputEditorInfo());if(snapshot[0]==null)throw new AssertionError("Full context unavailable before recording");}
                 show();surface[0]=(View)field(session,"keyboardSurface");alpha[0]=(Float)field(session,"surfaceAlpha");
             });
             SystemClock.sleep(650);
             main(()->{
                 View overlay=(View)field(session,"overlay");int[] location=new int[2];overlay.getLocationOnScreen(location);
                 View root=(View)field(session,"root");
+                if(!root.hasWindowFocus())throw new AssertionError("Voice window did not take focus from editor selection controls");
+                if(selectionCase && !"red".contentEquals(connection[0].getSelectedText(0)))throw new AssertionError("Recording changed the selected range");
+                if(selectionCase && !snapshot[0].sameTarget(EditorContext.capture(connection[0],ime.getCurrentInputEditorInfo())))throw new AssertionError("Full message changed during recording");
                 // Reproduce stale geometry while discovery is throttled. A layout notification must repair it immediately.
                 FrameLayout.LayoutParams stale=(FrameLayout.LayoutParams)overlay.getLayoutParams();
                 stale.width=Math.max(1,root.getWidth()-100);stale.height=Math.max(1,root.getHeight()-100);overlay.setLayoutParams(stale);
@@ -96,6 +110,10 @@ public final class VoiceWindowIntegrationChecks {
                 WindowManager.LayoutParams restored=ime.getWindow().getWindow().getAttributes();
                 if(restored.flags!=original.flags || (Build.VERSION.SDK_INT>=30 && restored.getFitInsetsTypes()!=original.getFitInsetsTypes()))throw new AssertionError("Window flags/insets leaked");
                 if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Cancel changed the editor connection");
+                if(selectionCase && !"red".contentEquals(connection[0].getSelectedText(0)))throw new AssertionError("Cancel changed the selected range");
+                if(selectionCase){
+                    if(!DictationInsertion.commit(connection[0],"green",ime.getCurrentInputEditorInfo()))throw new AssertionError("Selected replacement failed");
+                }
                 show();
             });
             SystemClock.sleep(450);main(this::requireTestEditor);

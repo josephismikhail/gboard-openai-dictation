@@ -43,14 +43,20 @@ public final class VoiceEngine {
     private volatile Call call;
     private JSONObject config;
     private List<String> vocabulary;
+    private volatile DictationContext editorContext;
     private long stoppedAt, audioBytes;
 
     public VoiceEngine(Context context, Listener listener) {
+        this(context,listener,null);
+    }
+    public VoiceEngine(Context context, Listener listener, DictationContext editorContext) {
         this.context = context.getApplicationContext(); this.listener = listener;
+        this.editorContext=editorContext;
     }
     public void start() { WORK.execute(this::record); }
     public void stop() { stoppedAt = SystemClock.elapsedRealtime(); stopRequested = true; }
     public void cancel() {
+        editorContext=null;
         cancelled.set(true); stopRequested = true;
         CloudLiveTranscriptionSession session = live; if (session != null) session.cancel();
         Call pending = call; if (pending != null) pending.cancel();
@@ -130,7 +136,7 @@ public final class VoiceEngine {
                 if (cancelled.get()) return;
                 cleanupStart = SystemClock.elapsedRealtime();
                 JSONObject response = cleanup(raw);
-                String cleaned = outputText(response);
+                String cleaned = outputText(response,editorContext!=null && config.optBoolean("useMessageContext",true));
                 FidelityVerdict verdict = CloudCleanupFidelityGuard.INSTANCE.check(raw, cleaned, vocabulary);
                 JSONObject metrics = new JSONObject().put("timestamp", System.currentTimeMillis())
                     .put("audioMs", audioBytes / 32).put("batchFallback", fallback)
@@ -156,6 +162,7 @@ public final class VoiceEngine {
                 if (live != null) live.close();
                 synchronized (lock) { pcm.reset(); }
                 config = null;
+                editorContext = null;
             }
         });
     }
@@ -164,11 +171,14 @@ public final class VoiceEngine {
         if (prompt.contains("{{vocabulary}}")) prompt = prompt.replace("{{vocabulary}}",
             " Watch for these project names and personal vocabulary terms, which speech-to-text often mishears: " + String.join(", ", vocabulary) + ".");
         prompt += "\n\nWrite your output in the same language as the transcript; do not translate it unless the instructions above explicitly ask for a translation.";
+        DictationContext snapshot=editorContext;
+        boolean contextual=snapshot!=null && config.optBoolean("useMessageContext",true);
+        if(contextual)prompt+="\n\n"+DictationContext.INSTRUCTIONS;
         JSONObject body = new JSONObject().put("model", "gpt-6.1-sol").put("service_tier", "ultrafast")
             .put("store", false).put("reasoning", new JSONObject().put("effort", "low"))
             .put("text", new JSONObject().put("verbosity", "low")).put("max_output_tokens", 4096)
             .put("input", new JSONArray().put(new JSONObject().put("role", "system").put("content", prompt))
-                .put(new JSONObject().put("role", "user").put("content", raw)));
+                .put(new JSONObject().put("role", "user").put("content", contextual?snapshot.input(raw):raw)));
         return request("https://api.openai.com/v1/responses", RequestBody.create(body.toString(), MediaType.get("application/json")));
     }
     private String transcribeFile() throws Exception {
@@ -192,6 +202,9 @@ public final class VoiceEngine {
         } finally { call = null; }
     }
     public static String outputText(JSONObject response) throws Exception {
+        return outputText(response,false);
+    }
+    public static String outputText(JSONObject response,boolean contextual) throws Exception {
         if (!"completed".equals(response.optString("status"))) throw new IllegalStateException("Incomplete cleanup");
         StringBuilder output = new StringBuilder(); JSONArray items = response.getJSONArray("output");
         for (int i=0; i<items.length(); i++) {
@@ -200,7 +213,8 @@ public final class VoiceEngine {
             for (int j=0; j<parts.length(); j++) if ("output_text".equals(parts.getJSONObject(j).optString("type")))
                 output.append(parts.getJSONObject(j).getString("text"));
         }
-        String text=output.toString().trim(); if (text.isEmpty()) throw new IllegalStateException("Empty cleanup");
+        String text=contextual?DictationContext.trimOutputPadding(output.toString()):output.toString().trim();
+        if (text.trim().isEmpty()) throw new IllegalStateException("Empty cleanup");
         return text;
     }
     private void fail(String message) {

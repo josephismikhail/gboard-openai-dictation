@@ -25,7 +25,7 @@ public final class DictationInsertion {
             } finally { editor.endBatchEdit(); }
         } catch (RuntimeException ignored) { return false; }
     }
-    private static boolean prose(EditorInfo info) {
+    static boolean prose(EditorInfo info) {
         if (info==null) return true;
         int type=info.inputType;
         if ((type & InputType.TYPE_MASK_CLASS)!=InputType.TYPE_CLASS_TEXT) return false;

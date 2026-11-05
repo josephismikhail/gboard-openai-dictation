@@ -23,7 +23,19 @@ public final class SetupInstrumentation extends Instrumentation {
             String action=arguments.getString("action", "verify");
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
             String alias="gboard-openai-migration";
-            if("windowTest".equals(action)){
+            if("contextCleanupTest".equals(action)){
+                Thread.sleep(Math.min(10000,Math.max(0,Integer.parseInt(arguments.getString("delayMs","0")))));
+                ContextCleanupChecks.run(getTargetContext());
+                result.putString("contextCleanupTests","passed: selected-word replacement, mid-sentence insertion, list continuation, whole-message names, fidelity guard");
+            } else if("editorContextTest".equals(action)){
+                final Throwable[] failure={null};
+                runOnMainSync(()->{try{EditorContextChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
+                if(failure[0]!=null)throw new AssertionError(failure[0]);
+                result.putString("editorContextTests","passed: full message, selection, partial-extract fallback, password exclusion");
+            } else if("selectionWindowTest".equals(action)){
+                VoiceWindowIntegrationChecks.runSelection(this);
+                result.putString("selectionWindowTests","passed: selection preserved while voice window takes focus and on cancel");
+            } else if("windowTest".equals(action)){
                 VoiceWindowIntegrationChecks.run(this);
                 result.putString("windowTests","passed: real full-screen window, upper-screen stop, processing cancel, editor connection, window restoration, Back cancellation");
             } else if("insertionTest".equals(action)){

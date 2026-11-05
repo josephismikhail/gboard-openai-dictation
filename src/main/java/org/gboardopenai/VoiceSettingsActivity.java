@@ -26,8 +26,10 @@ public final class VoiceSettingsActivity extends Activity {
         scroll.requestApplyInsets();
         setTitle("OpenAI dictation");
         TextView heading=new TextView(this);heading.setText("OpenAI dictation");heading.setTextSize(24);content.addView(heading);
-        TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. No account or server is provided by this project.\n\nTap the keyboard microphone to start, then tap anywhere in the full-screen voice view to finish. Pauses do not end a recording. Use the close button or Back to cancel. Long-press the idle microphone to return here.");content.addView(info);
+        TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. With message context enabled, the whole current message is included so new words fit the text around them. No account or server is provided by this project.\n\nTap the keyboard microphone to start, then tap anywhere in the full-screen voice view to finish. Pauses do not end a recording. Use the close button or Back to cancel. Long-press the idle microphone to return here.");content.addView(info);
         JSONObject existing;try{existing=VoiceConfig.load(this);}catch(Exception e){existing=new JSONObject();}
+        Switch useContext=new Switch(this);useContext.setText("Use the whole message as cleanup context");
+        useContext.setChecked(existing.optBoolean("useMessageContext",true));content.addView(useContext);
         TextView status=new TextView(this);status.setText(existing.has("key")?"API key saved on this phone":"No API key configured");content.addView(status);
         EditText key=new EditText(this);key.setHint("OpenAI API key");key.setSingleLine(true);key.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);content.addView(key);
         EditText vocab=new EditText(this);vocab.setHint("Optional names and vocabulary, one per line");vocab.setMinLines(3);vocab.setMaxLines(4);vocab.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
@@ -39,7 +41,7 @@ public final class VoiceSettingsActivity extends Activity {
             String token=key.getText().toString().trim();if(token.isEmpty())token=config.optString("key","");
             JSONArray list=new JSONArray();for(String line:vocab.getText().toString().split("\\n")){if(!line.trim().isEmpty())list.put(line.trim());}
             String instructions=prompt.getText().toString().trim();if(instructions.isEmpty())instructions=DEFAULT_PROMPT;
-            VoiceConfig.save(this,new JSONObject().put("key",token).put("vocabulary",list).put("prompt",instructions));
+            VoiceConfig.save(this,new JSONObject().put("key",token).put("vocabulary",list).put("prompt",instructions).put("useMessageContext",useContext.isChecked()));
             config.put("key",token);
             key.setText("");status.setText("API key saved on this phone");Toast.makeText(this,"Settings saved",Toast.LENGTH_SHORT).show();
         }catch(Exception e){status.setText("Could not save. Check the API key and try again.");}});
