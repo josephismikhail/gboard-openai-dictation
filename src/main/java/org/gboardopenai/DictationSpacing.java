@@ -23,8 +23,7 @@ public final class DictationSpacing {
             prefix=!space(left) && !space(first) && !opening && !closes(first);
         }
         if (after!=null && !space(last)) {
-            if (after.length()==0) suffix=!opens(last);
-            else {
+            if (after.length()>0) {
                 int right=Character.codePointAt(after,0);
                 boolean closing=closes(right);
                 if (right=='"' || right=='\'') {
