@@ -90,7 +90,7 @@ public final class FullscreenVoicePreviewActivity extends Activity {
         }
         @Override protected void onDraw(Canvas canvas){
             super.onDraw(canvas);canvas.drawColor(0xff1f1f1f);
-            float d=density,cx=getWidth()/2f,cy=getHeight()*.46f;
+            float d=density,cx=getWidth()/2f,cy=getHeight()/2f;
             long now=SystemClock.uptimeMillis();boolean animate=android.animation.ValueAnimator.areAnimatorsEnabled();
             double time=animate?(now-started)/1000.0:.6;
             float morph=processing?(animate?Math.min(1,(now-processingAt)/450f):1):0;

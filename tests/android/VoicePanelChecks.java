@@ -16,7 +16,7 @@ import org.gboardopenai.VoiceWindowInsets;
 
 /** Deterministic rendering and touch tests; no microphone or network request. */
 public final class VoicePanelChecks {
-    private static final int WIDTH=480, HEIGHT=900, CENTER_Y=414;
+    private static final int WIDTH=480, HEIGHT=900, CENTER_Y=HEIGHT/2;
     private static final class Panel extends VoicePanel {
         long clock=1000;
         Panel(Context context){super(context,Color.BLACK,Color.CYAN);}
@@ -46,8 +46,27 @@ public final class VoicePanelChecks {
         for(int density:new int[]{160,320,480}){
             Configuration config=new Configuration(context.getResources().getConfiguration());config.densityDpi=density;
             checkProcessingShape(context.createConfigurationContext(config));
+            for(int[] size:new int[][]{{480,900},{900,480},{481,901}})
+                checkVerticalCenter(context.createConfigurationContext(config),size[0],size[1]);
         }
         org.gboardopenai.VoiceWindowChecks.run(context);
+    }
+    private static void checkVerticalCenter(Context context,int width,int height){
+        Panel panel=new Panel(context);
+        panel.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));
+        panel.layout(0,0,width,height);panel.setPhase(VoiceUiState.Phase.LISTENING);
+        for(int frame=0;frame<4;frame++){
+            if(frame==1)panel.level(.45f);
+            if(frame==2)panel.setPhase(VoiceUiState.Phase.PROCESSING);
+            panel.clock+=frame>=2?600:16;
+            Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);panel.draw(new Canvas(bitmap));
+            int top=height,bottom=-1;
+            for(int y=0;y<height;y++)if(Color.green(bitmap.getPixel(width/2,y))>20){top=Math.min(top,y);bottom=y;}
+            if(bottom<0 || Math.abs((top+bottom+1)/2f-height/2f)>1)
+                throw new AssertionError("Voice animation is not vertically centered, frame="+frame+", size="+width+"x"+height);
+            bitmap.recycle();
+        }
+        panel.clear();
     }
     private static Panel makePanel(Context context){
         Panel panel=new Panel(context);
