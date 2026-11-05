@@ -45,6 +45,11 @@ public final class VoiceSettingsActivity extends Activity {
             config.put("key",token);
             key.setText("");status.setText("API key saved on this phone");Toast.makeText(this,"Settings saved",Toast.LENGTH_SHORT).show();
         }catch(Exception e){status.setText("Could not save. Check the API key and try again.");}});
+        TextView messagesInfo=new TextView(this);
+        messagesInfo.setText("Optional: Messages dictation shortcut. Enable this accessibility service to place OpenAI dictation over Google Messages' voice-note control and move voice notes into the keyboard. It reads Messages' on-screen controls locally, never sends a message, and does not save conversation text. When Messages shows Send instead of its recorder, the normal buttons are restored.");
+        content.addView(messagesInfo);
+        Button messagesSettings=new Button(this);messagesSettings.setText("Set up Messages shortcut");content.addView(messagesSettings);
+        messagesSettings.setOnClickListener(v->startActivity(new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         TextView label=new TextView(this);label.setText("Try dictation");content.addView(label);
         EditText test=new EditText(this);test.setHint("Tap here, then use the keyboard microphone");test.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);test.setMinLines(3);test.setMaxLines(6);content.addView(test);
     }
