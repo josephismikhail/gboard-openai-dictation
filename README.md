@@ -85,6 +85,8 @@ microphone works without it.
 After installing and selecting the keyboard, **long-press its idle microphone**
 to open **OpenAI dictation** settings. Enter your own OpenAI API key and save it.
 Optional vocabulary and cleanup instructions are configured in the same screen.
+Configured vocabulary also preserves its exact capitalization in the inserted
+text; these personal spellings stay in your encrypted phone configuration.
 **Use the whole message as cleanup context** is enabled by default and can be
 turned off there. Context is held only for the current dictation, never saved or
 logged. If the editor cannot provide a complete message, cleanup falls back to
@@ -113,6 +115,13 @@ and vertically in the full-screen view.
 Leaving the input field also cancels and restores
 the keyboard. A ten-minute recording limit prevents an accidentally forgotten
 microphone from running indefinitely. System-disabled animations are respected.
+
+Opening the full-screen voice view requests temporary audio focus so cooperating
+media apps pause their playback. Focus is returned when the view closes, after
+cleanup and insertion or cancellation, allowing the player to resume. The keyboard
+does not change media volume or send a blanket Play command. Playback behavior is
+controlled by the media app: some players may ignore focus changes or require a
+manual resume. No additional media or notification access is requested.
 
 The full-screen view stays in the keyboard's own window, preserving its connection
 to the original text field. It needs no floating-overlay permission or separate

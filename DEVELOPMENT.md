@@ -104,6 +104,12 @@ changed-target detection, partial and prefix-only extract rejection, overflow an
 boundary checks, structural newline preservation, and password exclusion.
 Remove the temporary harness with `adb uninstall org.gboardopenai.test` when done.
 
+`mediaFocusTest` uses the same launch sequence as `windowTest` below. It reports
+whether this IME can obtain audio focus, verifies the lease remains through the
+processing phase, and checks that closing the voice view releases it. It makes no
+recording or API request. Validate pause/resume behavior separately in the desired
+media apps, including an initially paused player and cancel/error paths.
+
 To test full-screen touch routing in the actual IME without a microphone or API
 request, first stop the QA app with `adb shell am force-stop org.gboardopenai.test`.
 Start the following command, then use a second terminal to select the
