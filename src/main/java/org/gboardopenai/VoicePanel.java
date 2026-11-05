@@ -63,7 +63,7 @@ public class VoicePanel extends View {
         super.onDraw(canvas);
         canvas.drawColor(background);
         float d = getResources().getDisplayMetrics().density;
-        float cx = getWidth() / 2f, cy = getHeight() * .46f;
+        float cx = getWidth() / 2f, cy = getHeight() / 2f;
         long now = frameTime();
         paint.setColor(accent); paint.setStyle(Paint.Style.STROKE); paint.setStrokeCap(Paint.Cap.ROUND);
         boolean animate = android.animation.ValueAnimator.areAnimatorsEnabled();
