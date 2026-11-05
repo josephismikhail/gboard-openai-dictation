@@ -148,3 +148,15 @@ preview labels distinguish it from real dictation.
 
 Do not add telemetry, an update service, or a hosted proxy. Do not publish a
 Google-derived APK in releases. Public CI tests source and mock services only.
+
+## Messages shortcut validation
+
+The build adds `split_openai_messages.apk`, containing only the optional service's XML metadata and description. Install it together with all other output APKs; `install.py` already includes it. Existing Google resource tables remain untouched.
+
+After building/installing the QA harness, run `adb shell am instrument -w -e action messagesMetadataTest org.gboardopenai.test/.SetupInstrumentation`. This verifies that Android resolves the protected service declaration, description and Messages-only event configuration without enabling the service. Restore the selected keyboard after instrumentation.
+
+JVM tests reject Send/recorder ambiguity, unknown controls, changed conversations, changed drafts or selections, wrong apps, expired requests, duplicate taps, drags and multi-touch. Device validation requires enabling the optional service manually: check hidden-keyboard dictation, ordinary keyboard dictation, Send preservation after insertion/typing, cancellation, app switching and service disablement. Use synthetic dictation only; never send a message during validation.
+
+`messagesTransitionTest` measures touch-layer alignment while opening and closing the keyboard in an existing empty Messages conversation. It verifies that the touch layer draws no pixels and the normal keyboard microphone stays visible and points to dictation. It taps only the validated composer, never edits text, starts recording, or presses Send. Position metrics concern the invisible hit area; native Messages alone renders the visible button. A touch arriving while the hit area is stale is safely rejected.
+
+Instrumentation restarts the keyboard process. For this test, restore the selected keyboard and reconnect the already-enabled accessibility service, then return focus to the empty conversation during `-e delayMs 10000`. Re-enable the service and restore the keyboard after instrumentation finishes. Unknown layouts and nonempty drafts fail without interaction. Also check repeated fast keyboard toggles and ordinary dictation in Messages search; these cases need live device validation.

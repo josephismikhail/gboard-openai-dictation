@@ -23,7 +23,18 @@ public final class SetupInstrumentation extends Instrumentation {
             String action=arguments.getString("action", "verify");
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
             String alias="gboard-openai-migration";
-            if("contextCleanupTest".equals(action)){
+            if("messagesTransitionTest".equals(action)){
+                Thread.sleep(Math.min(10000,Math.max(0,Integer.parseInt(arguments.getString("delayMs","0")))));
+                result.putString("messagesTransitionMetrics",MessagesTransitionChecks.run(this).toString());
+            } else if("messagesInspect".equals(action)){
+                final JSONObject[] state={null};final Throwable[] error={null};
+                runOnMainSync(()->{try{state[0]=MessagesIntegrationChecks.inspect();}catch(Throwable failure){error[0]=failure;}});
+                if(error[0]!=null)throw new AssertionError(error[0]);
+                result.putString("messagesState",state[0].toString());
+            } else if("messagesMetadataTest".equals(action)){
+                MessagesIntegrationChecks.run(getTargetContext());
+                result.putString("messagesMetadataTests","passed: protected service, Messages scope, metadata and description resources");
+            } else if("contextCleanupTest".equals(action)){
                 Thread.sleep(Math.min(10000,Math.max(0,Integer.parseInt(arguments.getString("delayMs","0")))));
                 ContextCleanupChecks.run(getTargetContext());
                 result.putString("contextCleanupTests","passed: selected-word replacement, mid-sentence insertion, list continuation, whole-message names, fidelity guard");

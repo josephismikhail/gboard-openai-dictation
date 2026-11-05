@@ -37,6 +37,25 @@ def inspect(data):
     return strings,tags
 
 class BinaryXmlTests(unittest.TestCase):
+    def test_accessibility_service_has_typed_metadata_and_protected_binding(self):
+        data=patch(fixture(),True,0x7f17124b)
+        _,tags=inspect(data)
+        service=next(a for name,a in tags if name=='service')
+        self.assertEqual('org.gboardopenai.MessagesAccessibilityService',service['name'])
+        self.assertEqual('android.permission.BIND_ACCESSIBILITY_SERVICE',service['permission'])
+        self.assertEqual('Messages dictation shortcut',service['label'])
+        self.assertEqual(1,service['exported'])
+        metadata=next(a for name,a in tags if name=='meta-data')
+        self.assertEqual('android.accessibilityservice',metadata['name'])
+        self.assertEqual(0x7f17124b,metadata['resource'])
+        strings,_=inspect(data);p=8;found=False
+        while p<len(data):
+            kind,_,size=struct.unpack_from('<HHI',data,p)
+            if kind==0x180:
+                values=struct.unpack_from('<'+'I'*((size-8)//4),data,p+8)
+                self.assertEqual(0x01010025,values[strings.index('resource')]);found=True
+            p+=size
+        self.assertTrue(found,'Metadata attribute needs an Android resource-map entry')
     def test_package_and_authorities_change_without_renaming_classes(self):
         _,tags=inspect(patch(fixture(),True));d=dict(tags)
         self.assertEqual(NEW,d['manifest']['package'])

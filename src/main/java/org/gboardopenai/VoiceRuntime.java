@@ -18,15 +18,40 @@ import java.util.WeakHashMap;
 public final class VoiceRuntime {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final WeakHashMap<InputMethodService, Session> SESSIONS = new WeakHashMap<>();
+    private static final MessagesHandoff MESSAGES_HANDOFF = new MessagesHandoff();
+    /** In-process entry only; the accessibility shortcut must originate in a current Messages composer. */
+    public static boolean requestMessagesDictation(MessagesHandoff.Target target){
+        if(Looper.myLooper()!=Looper.getMainLooper() || isVoiceUiVisible()){
+            if(target!=null)try{target.release();}catch(RuntimeException ignored){}
+            return false;
+        }
+        boolean accepted=MESSAGES_HANDOFF.request(target,android.os.SystemClock.elapsedRealtime());
+        if(accepted){
+            MAIN.postDelayed(()->MESSAGES_HANDOFF.expire(android.os.SystemClock.elapsedRealtime()),MessagesHandoff.TIMEOUT_MS);
+            for(Session session:SESSIONS.values())session.scanLater();
+        }
+        return accepted;
+    }
+    public static void cancelMessagesHandoff(){MESSAGES_HANDOFF.cancel();}
+    public static boolean isVoiceUiVisible(){
+        for(Session session:SESSIONS.values())if(!session.closed && session.panel!=null)return true;
+        return false;
+    }
     public static void attach(InputMethodService ime) {
-        MAIN.post(() -> {
+        Runnable attach=() -> {
+            MessagesAccessibilityService.keyboardTransition();
             Session session=SESSIONS.get(ime);
             if(session==null) { session=new Session(ime); SESSIONS.put(ime, session); }
+            // Install the transparent action target before the keyboard's first paint.
+            session.scan();
             session.scanLater();
-        });
+        };
+        if(Looper.myLooper()==Looper.getMainLooper())attach.run();else MAIN.post(attach);
     }
     public static void detach(InputMethodService ime) {
         Session session=SESSIONS.remove(ime); if(session!=null) session.close();
+        if(Looper.myLooper()==Looper.getMainLooper())MessagesAccessibilityService.keyboardTransition();
+        else MAIN.post(MessagesAccessibilityService::keyboardTransition);
     }
     /** Runs after Gboard computes its normal editor insets, including each early return. */
     public static void adjustInsets(InputMethodService ime, InputMethodService.Insets insets) {
@@ -67,6 +92,7 @@ public final class VoiceRuntime {
         FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
         android.window.OnBackInvokedCallback voiceBack;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
+        ViewTreeObserver.OnPreDrawListener preDrawListener;
         int generation; boolean closed, reportedMissing; long lastScan;
         Session(InputMethodService ime) { this.ime=ime; }
         void scanLater() {
@@ -86,6 +112,13 @@ public final class VoiceRuntime {
                     if(now-lastScan>200) {lastScan=now; MAIN.post(this::scan);}
                 };
                 root.getViewTreeObserver().addOnGlobalLayoutListener(layoutListener);
+                preDrawListener=()->{
+                    if(button==null || nativeMic==null || !nativeMic.isAttachedToWindow() || !nativeMic.isShown())scan();
+                    // The native glyph stays visible; adding a transparent touch
+                    // target does not require delaying the first rendered frame.
+                    return true;
+                };
+                root.getViewTreeObserver().addOnPreDrawListener(preDrawListener);
             }
             View target=findMic(root);
             if(target==null) {
@@ -104,14 +137,19 @@ public final class VoiceRuntime {
                 root.addView(button);
                 android.util.Log.i("PixelVoice","Microphone attached inside keyboard");
             }
-            if(nativeMic!=null && nativeMic!=target){nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
-            nativeMic=target;nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            if(nativeMic!=null && nativeMic!=target)nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+            nativeMic=target;nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(bounds.width(),bounds.height());
             p.leftMargin=bounds.left-root.getPaddingLeft();p.topMargin=bounds.top-root.getPaddingTop();p.gravity=Gravity.TOP|Gravity.LEFT;
             FrameLayout.LayoutParams old=(FrameLayout.LayoutParams)button.getLayoutParams();
             if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin) button.setLayoutParams(p);
             if(panel!=null){positionPanel();button.setVisibility(View.INVISIBLE);overlay.bringToFront();}
             else {button.bringToFront();button.setVisibility(View.VISIBLE);}
+            android.view.inputmethod.EditorInfo info=ime.getCurrentInputEditorInfo();
+            if(MESSAGES_HANDOFF.consume(info==null?null:info.packageName,info==null?0:info.fieldId,
+                    !closed && ui.phase()==VoiceUiState.Phase.IDLE && ime.isInputViewShown()
+                    && ime.getCurrentInputConnection()!=null && nativeMic!=null,
+                    android.os.SystemClock.elapsedRealtime()))toggle();
         }
         View findMic(View v) {
             if(v==button || v==overlay || v.getVisibility()!=View.VISIBLE) return null;
@@ -186,6 +224,7 @@ public final class VoiceRuntime {
             }
             candidate.setAlpha(0);candidate.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             button.setVisibility(View.INVISIBLE);overlay.bringToFront();root.requestLayout();
+            MessagesAccessibilityService.refreshActive();
             return true;
         }
         int sampleBackground(View surface){
@@ -221,13 +260,19 @@ public final class VoiceRuntime {
             if(keyboardSurface!=null){keyboardSurface.setAlpha(surfaceAlpha);keyboardSurface.setImportantForAccessibility(surfaceAccessibility);keyboardSurface=null;}
             if(button!=null)button.setVisibility(View.VISIBLE);
             if(root!=null)root.requestLayout();
+            MessagesAccessibilityService.refreshActive();
         }
         void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;editorContext=null;ui.reset();removePanel(); }
-        void removeButton(){
-            if(nativeMic!=null){nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
+        void removeObservers(){
             if(root!=null && layoutListener!=null && root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
+            if(root!=null && preDrawListener!=null && root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnPreDrawListener(preDrawListener);
+            layoutListener=null;preDrawListener=null;
+        }
+        void removeButton(){
+            removeObservers();
+            if(nativeMic!=null)nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
             if(button!=null && button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
-            button=null;nativeMic=null;layoutListener=null;
+            button=null;nativeMic=null;
         }
         void close(){closed=true;cancel();removeButton();root=null;}
     }
