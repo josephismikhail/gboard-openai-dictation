@@ -130,9 +130,10 @@ adb shell am instrument -w -e action windowTest org.gboardopenai.test/.SetupInst
 
 This check only operates on the QA package's editor. It opens the real voice
 window with a synthetic recording state, taps above the old keyboard area to
-verify the insets hook, cancels during processing, checks the original input
+verify the insets hook, uses Android Back to cancel during processing, checks the original input
 connection and window attributes, tests a resize while microphone discovery is
-throttled, then tests Back cancellation. The rendering checks also exercise
+throttled, then tests Back cancellation during recording. Both phases must have
+only the voice panel in the full-screen layer, without a close button. The rendering checks also exercise
 mdpi, xhdpi and xxhdpi contexts without changing the phone's display settings. The reflection
 used to arrange this synthetic state exists only in the optional QA APK.
 

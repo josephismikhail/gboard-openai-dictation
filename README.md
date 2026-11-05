@@ -11,7 +11,7 @@ its microphone as a predictable manual start/stop control:
 1. Tap the microphone to start recording.
 2. Speak naturally. Pauses do not finish the recording.
 3. A full-screen voice view shows a live waveform. Tap anywhere to finish,
-   or use the close button to cancel.
+   or use Android Back to cancel.
 4. OpenAI transcribes the audio and cleans up filler words, explicit corrections,
    punctuation, and lists. The result is inserted into the current text field.
 
@@ -109,7 +109,7 @@ Speech produces large, bright peaks above a dim, flat quiet line. Tap anywhere o
 the layer to finish. The waveform contracts into a centered, gently breathing
 white shape while cleanup runs. The same transparent backdrop remains until the
 result is inserted, then the ordinary keyboard returns. The animation indicates
-activity, not estimated progress. Use the close button, Back, or a long press to
+activity, not estimated progress. Use Android Back or a long press to
 cancel recording or processing. There are no routine status toasts.
 Leaving the input field also cancels and restores
 the keyboard. A ten-minute recording limit prevents an accidentally forgotten

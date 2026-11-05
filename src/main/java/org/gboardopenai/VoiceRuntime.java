@@ -98,7 +98,7 @@ public final class VoiceRuntime {
         final VoiceUiState ui = new VoiceUiState();
         VoicePanel panel; View keyboardSurface; float surfaceAlpha; int surfaceAccessibility;
         MediaPlaybackGate mediaPlayback;
-        FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
+        FrameLayout overlay; VoiceWindowState windowState;
         android.window.OnBackInvokedCallback voiceBack;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         ViewTreeObserver.OnPreDrawListener preDrawListener;
@@ -224,9 +224,6 @@ public final class VoiceRuntime {
             overlay=new VoiceOverlay(ime,this::cancel);
             overlay.setAccessibilityPaneTitle("Voice dictation");
             overlay.addView(panel,new FrameLayout.LayoutParams(-1,-1));
-            closeButton=new CloseButton(ime,accent);
-            closeButton.setOnClickListener(v->cancel());
-            overlay.addView(closeButton,new FrameLayout.LayoutParams(Math.round(48*density),Math.round(48*density),Gravity.TOP|Gravity.RIGHT));
             windowState=new VoiceWindowState(ime.getWindow().getWindow());
             root.addView(overlay);positionPanel();
             panel.setFocusableInTouchMode(true);panel.requestFocus();
@@ -249,13 +246,6 @@ public final class VoiceRuntime {
             p.gravity=Gravity.TOP|Gravity.LEFT;p.leftMargin=-root.getPaddingLeft();p.topMargin=-root.getPaddingTop();
             FrameLayout.LayoutParams old=(FrameLayout.LayoutParams)overlay.getLayoutParams();
             if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin)overlay.setLayoutParams(p);
-            int edge=Math.round(24*ime.getResources().getDisplayMetrics().density),top=edge,right=edge;
-            WindowInsets insets=root.getRootWindowInsets();
-            if(insets!=null && insets.getDisplayCutout()!=null){
-                top+=insets.getDisplayCutout().getSafeInsetTop();right+=insets.getDisplayCutout().getSafeInsetRight();
-            }
-            FrameLayout.LayoutParams c=(FrameLayout.LayoutParams)closeButton.getLayoutParams();
-            if(c.topMargin!=top || c.rightMargin!=right){c.topMargin=top;c.rightMargin=right;closeButton.setLayoutParams(c);}
         }
         void showProcessing(){if(panel!=null)panel.setPhase(ui.phase());}
         void removePanel(){
@@ -267,7 +257,7 @@ public final class VoiceRuntime {
                 ime.getWindow().getWindow().getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(voiceBack);voiceBack=null;
             }
             if(panel!=null){panel.clear();panel=null;}
-            if(overlay!=null){if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);overlay=null;closeButton=null;}
+            if(overlay!=null){if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);overlay=null;}
             if(windowState!=null){windowState.restore();windowState=null;}
             if(keyboardSurface!=null){keyboardSurface.setAlpha(surfaceAlpha);keyboardSurface.setImportantForAccessibility(surfaceAccessibility);keyboardSurface=null;}
             if(button!=null)button.setVisibility(View.VISIBLE);
@@ -307,22 +297,5 @@ public final class VoiceRuntime {
             return super.dispatchKeyEvent(event);
         }
     }
-    private static final class CloseButton extends View {
-        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final int color;
-        CloseButton(android.content.Context context,int color){
-            super(context);this.color=color;setClickable(true);setFocusable(true);setContentDescription("Cancel dictation");
-        }
-        @Override protected void onDraw(Canvas canvas){
-            float d=getResources().getDisplayMetrics().density,cx=getWidth()/2f,cy=getHeight()/2f;
-            paint.setColor(color);paint.setStyle(Paint.Style.FILL);paint.setAlpha(isPressed()?45:18);
-            canvas.drawCircle(cx,cy,24*d,paint);
-            paint.setAlpha(255);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.8f*d);paint.setStrokeCap(Paint.Cap.ROUND);
-            canvas.drawLine(cx-5*d,cy-5*d,cx+5*d,cy+5*d,paint);canvas.drawLine(cx-5*d,cy+5*d,cx+5*d,cy-5*d,paint);
-        }
-        @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
-            super.onInitializeAccessibilityNodeInfo(info);info.setClassName(android.widget.Button.class.getName());
-        }
-    }
-
     private VoiceRuntime(){}
 }

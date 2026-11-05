@@ -73,6 +73,11 @@ public final class VoiceWindowIntegrationChecks {
         if(ime.getCurrentInputEditorInfo()==null || !"org.gboardopenai.test".equals(ime.getCurrentInputEditorInfo().packageName))
             throw new AssertionError("Only the blank local QA editor may be operated");
     }
+    private void requireOnlyVoicePanel()throws Exception{
+        FrameLayout overlay=(FrameLayout)field(session,"overlay");
+        if(overlay==null || overlay.getChildCount()!=1 || overlay.getChildAt(0)!=field(session,"panel"))
+            throw new AssertionError("Voice surface must contain only the waveform, with no close control");
+    }
     private void tap()throws Exception{
         main(this::requireTestEditor);
         long now=SystemClock.uptimeMillis();
@@ -112,6 +117,7 @@ public final class VoiceWindowIntegrationChecks {
             SystemClock.sleep(650);
             main(()->{
                 View overlay=(View)field(session,"overlay");int[] location=new int[2];overlay.getLocationOnScreen(location);
+                requireOnlyVoicePanel();
                 View root=(View)field(session,"root");
                 if(!root.hasWindowFocus())throw new AssertionError("Voice window did not take focus from editor selection controls");
                 if(selectionCase && !"red".contentEquals(connection[0].getSelectedText(0)))throw new AssertionError("Recording changed the selected range");
@@ -133,15 +139,16 @@ public final class VoiceWindowIntegrationChecks {
                 if(((VoiceUiState)field(session,"ui")).phase()!=VoiceUiState.Phase.PROCESSING)throw new AssertionError("Upper-screen tap did not stop recording");
                 if(field(session,"overlay")==null || field(session,"panel")==null || field(session,"windowState")==null)
                     throw new AssertionError("Processing did not retain the full-screen voice surface");
+                requireOnlyVoicePanel();
                 VoiceRuntime.selectionChanged(ime,0,0,0,0);
                 if((Boolean)field(session,"targetChanged"))throw new AssertionError("Unchanged selection invalidated dictation");
                 VoiceRuntime.selectionChanged(ime,0,0,1,1);
                 if(!(Boolean)field(session,"targetChanged"))throw new AssertionError("Selection movement must invalidate pending insertion");
                 if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Processing changed the editor connection");
-                View close=(View)field(session,"closeButton");int[] location=new int[2];close.getLocationOnScreen(location);
-                point[0]=location[0]+close.getWidth()/2f;point[1]=location[1]+close.getHeight()/2f;
             });
-            tap();
+            main(this::requireTestEditor);
+            instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
+            SystemClock.sleep(400);
             main(()->{
                 if(field(session,"overlay")!=null || surface[0].getAlpha()!=alpha[0])throw new AssertionError("Cancel did not restore keyboard");
                 if(((VoiceUiState)field(session,"ui")).phase()!=VoiceUiState.Phase.IDLE)
@@ -159,7 +166,15 @@ public final class VoiceWindowIntegrationChecks {
             SystemClock.sleep(450);main(this::requireTestEditor);
             instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
             SystemClock.sleep(400);
-            main(()->{if(field(session,"overlay")!=null)throw new AssertionError("Back did not cancel and remove the full-screen view");});
+            main(()->{
+                if(field(session,"overlay")!=null || ((VoiceUiState)field(session,"ui")).phase()!=VoiceUiState.Phase.IDLE)
+                    throw new AssertionError("Back did not cancel recording and remove the full-screen view");
+                WindowManager.LayoutParams restored=ime.getWindow().getWindow().getAttributes();
+                if(restored.flags!=original.flags || restored.format!=original.format
+                        || (Build.VERSION.SDK_INT>=30 && restored.getFitInsetsTypes()!=original.getFitInsetsTypes()))
+                    throw new AssertionError("Recording cancellation leaked window attributes");
+                if(ime.getCurrentInputConnection()!=connection[0])throw new AssertionError("Recording cancellation changed the editor connection");
+            });
         }finally{main(()->call("cancel"));}
     }
     private void show()throws Exception{
