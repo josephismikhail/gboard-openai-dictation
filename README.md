@@ -80,6 +80,8 @@ through pull requests. Compatibility is deliberately restricted to tested APK
 versions rather than guessing at obfuscated methods in an unknown release.
 
 Current target: **Gboard 18.5.6.993608717, arm64**, including its installed splits.
+The on-phone microphone integration is currently validated with the English
+Gboard interface; other interface languages have not been validated.
 Instructions and test commands are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## License and attribution

@@ -1,0 +1,28 @@
+# Security and data handling
+
+The public project must never contain real API keys, private vocabulary,
+recordings, transcripts, signing keys, or Google APK files. Development and CI
+tests use synthetic examples and a local mock WebSocket server.
+
+The installed extension stores API configuration encrypted using Android
+Keystore. Configuration is private to the application; app backups are disabled.
+The setup screen does not repopulate the API-key field with an existing key.
+
+Audio is held in memory during a recording and sent directly to OpenAI. The
+cleanup request includes the transcript and configured vocabulary. Requests use
+HTTPS/WSS and do not follow redirects. No project-maintainer server, update
+checker, telemetry service, or account backend is included.
+
+Local diagnostic metrics contain timing, model usage counts, and the reported
+service tier. They do not contain transcript text or credentials. OpenAI's
+processing and retention policies still apply even with `store: false`.
+
+This is an unofficial modification of a proprietary application, not a complete
+security audit of Gboard. The extension and the supplied Google application run
+in the same Android application process. Keystore encryption protects stored
+configuration; it is not isolation from other code in that process or a rooted
+device. Obtain the base APK set from a source you trust.
+
+The patch deliberately supports a specific tested version. Do not broaden the
+version check without reviewing the bytecode targets and testing on a device.
+Report issues without including keys, transcripts, or private device data.
