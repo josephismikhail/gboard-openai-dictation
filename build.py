@@ -106,6 +106,14 @@ def main():
     s=f.read_text();updated=hook_void_returns(s,signature,call)
     if updated!=s:f.write_text(updated)
     changed_dex.add(f.relative_to(decoded).parts[0])
+    signature='onUpdateSelection(IIIIII)V'
+    candidates=[f for f,s in chain if re.search(r'^\.method[^\n]* '+re.escape(signature)+r'$',s,re.M)]
+    if len(candidates)!=1:raise RuntimeError('Expected one input-method selection implementation')
+    f=candidates[0]
+    call='invoke-static/range {p0 .. p4}, Lorg/gboardopenai/VoiceRuntime;->selectionChanged(Landroid/inputmethodservice/InputMethodService;IIII)V'
+    s=f.read_text();updated=hook_void_returns(s,signature,call)
+    if updated!=s:f.write_text(updated)
+    changed_dex.add(f.relative_to(decoded).parts[0])
     # Permit only this independently signed package through Gboard's self-signature gate.
     signatures=list(decoded.glob('smali*/sfr.smali'))
     if len(signatures)!=1:raise RuntimeError('Unsupported self-signature gate')
