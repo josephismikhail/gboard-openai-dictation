@@ -116,7 +116,9 @@ public final class VoiceRuntime {
                 public void recording(){ MAIN.post(()->{if(current==generation && button!=null)button.state(1);}); }
                 public void result(String text){ MAIN.post(()->{
                     if(current!=generation || closed)return;
-                    if(editor==ime.getCurrentInputConnection() && text!=null && !text.isEmpty())editor.commitText(text,1);
+                    if(editor==ime.getCurrentInputConnection() && text!=null && !text.isEmpty()){
+                        if(!DictationInsertion.commit(editor,text,ime.getCurrentInputEditorInfo()))Toast.makeText(ime,"Could not insert dictation into this text field.",Toast.LENGTH_LONG).show();
+                    }
                     editor=null;engine=null;if(button!=null)button.state(0);
                 }); }
                 public void error(String message){ MAIN.post(()->{
