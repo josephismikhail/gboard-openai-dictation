@@ -51,12 +51,6 @@ def patch(data,add_settings=False):
     def attrs(c):
         start,size,count=struct.unpack_from('<HHH',c,24)
         for i in range(count):yield 16+start+size*i
-    def tag(name,attributes):
-        values=[]
-        for attr,value,typ in attributes:
-            pos=index(value) if typ==3 else value
-            values.append(struct.pack('<IIIHBBI',index(ANDROID),index(attr),pos if typ==3 else 0xffffffff,8,0,typ,pos))
-        return struct.pack('<HHIIIIHHHHHH',0x102,16,36+20*len(values),0,0xffffffff,0xffffffff,index(name),20,20,len(values),0,0,0)+b''.join(values)
     # Explicit construction avoids ushort truncation of the element's name index.
     def activity():
         values=[]
