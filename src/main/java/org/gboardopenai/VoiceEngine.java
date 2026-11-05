@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class VoiceEngine {
     public interface Listener {
         void recording();
+        default void level(float value) {}
         void result(String text);
         void error(String safeMessage);
     }
@@ -112,6 +113,7 @@ public final class VoiceEngine {
     }
     private void acceptAudio(byte[] buffer, int count) {
         if (count <= 0) return;
+        if (!stopRequested && !cancelled.get()) listener.level(AudioLevel.measure(buffer, count));
         synchronized (lock) { pcm.write(buffer, 0, count); audioBytes += count; }
         if (terminal == null && live != null) live.sendPcm(buffer, count);
     }

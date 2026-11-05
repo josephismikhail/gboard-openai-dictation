@@ -3,6 +3,7 @@
 from pathlib import Path
 import argparse,hashlib,json,os,re,secrets,shutil,subprocess,sys,urllib.request,zipfile
 from tools.binary_xml import patch,NEW
+from tools.smali_hooks import hook_void_returns
 
 ROOT=Path(__file__).resolve().parent
 
@@ -72,6 +73,14 @@ def main():
         updated=re.sub(pattern,hook,s,flags=re.M|re.S)
         if updated!=s:f.write_text(updated)
         changed_dex.add(f.relative_to(decoded).parts[0])
+    signature='onComputeInsets(Landroid/inputmethodservice/InputMethodService$Insets;)V'
+    candidates=[f for f,s in chain if re.search(r'^\.method[^\n]* '+re.escape(signature)+r'$',s,re.M)]
+    if len(candidates)!=1:raise RuntimeError('Expected one input-method insets implementation')
+    f=candidates[0]
+    call='invoke-static/range {p0 .. p1}, Lorg/gboardopenai/VoiceRuntime;->adjustInsets(Landroid/inputmethodservice/InputMethodService;Landroid/inputmethodservice/InputMethodService$Insets;)V'
+    s=f.read_text();updated=hook_void_returns(s,signature,call)
+    if updated!=s:f.write_text(updated)
+    changed_dex.add(f.relative_to(decoded).parts[0])
     # Permit only this independently signed package through Gboard's self-signature gate.
     signatures=list(decoded.glob('smali*/sfr.smali'))
     if len(signatures)!=1:raise RuntimeError('Unsupported self-signature gate')
