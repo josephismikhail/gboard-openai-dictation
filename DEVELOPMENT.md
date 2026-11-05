@@ -40,11 +40,12 @@ names: `base.apk` and all installed split APKs. Do not commit this directory.
 
 ```sh
 python build.py --stock ../gboard-openai-private/stock --work ../gboard-openai-private
-adb install-multiple -r ../gboard-openai-private/output/*.apk
+python install.py --work ../gboard-openai-private
 ```
 
-On Windows PowerShell, pass the APK paths as an array if wildcard expansion is
-not supported by your ADB invocation:
+The installer grants microphone permission, enables the new keyboard, selects it,
+and verifies the selection. This matters after updates: Android may temporarily
+fall back to the original keyboard. To install manually on Windows PowerShell:
 
 ```powershell
 $apks = Get-ChildItem ../gboard-openai-private/output/*.apk | ForEach-Object FullName
