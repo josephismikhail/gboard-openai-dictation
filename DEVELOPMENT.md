@@ -110,11 +110,11 @@ unavailable reads, and bounded retention without microphone or API access.
 
 `uiPreview` uses the same launch sequence as `windowTest` below. It displays eight
 seconds of synthetic recording over the real QA editor, then eight seconds of the
-keyboard microphone spinner and cancels. It never opens the microphone or API.
+full-screen processing shape and cancels. It never opens the microphone or API.
 
 `mediaFocusTest` uses the same launch sequence as `windowTest` below. It reports
 whether this IME can obtain audio focus, verifies the lease remains through the
-processing phase after the full-screen layer closes, and checks that session
+processing phase with the full-screen layer retained, and checks that session
 completion releases it. It makes no
 recording or API request. Validate pause/resume behavior separately in the desired
 media apps, including an initially paused player and cancel/error paths.
