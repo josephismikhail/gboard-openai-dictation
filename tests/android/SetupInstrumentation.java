@@ -32,6 +32,9 @@ public final class SetupInstrumentation extends Instrumentation {
                 runOnMainSync(()->{try{EditorContextChecks.run(getTargetContext());}catch(Throwable error){failure[0]=error;}});
                 if(failure[0]!=null)throw new AssertionError(failure[0]);
                 result.putString("editorContextTests","passed: full message, selection, partial-extract fallback, password exclusion");
+            } else if("selectionWindowTest".equals(action)){
+                VoiceWindowIntegrationChecks.runSelection(this);
+                result.putString("selectionWindowTests","passed: selection preserved while voice window takes focus and on cancel");
             } else if("windowTest".equals(action)){
                 VoiceWindowIntegrationChecks.run(this);
                 result.putString("windowTests","passed: real full-screen window, upper-screen stop, processing cancel, editor connection, window restoration, Back cancellation");

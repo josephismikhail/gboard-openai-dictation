@@ -65,6 +65,7 @@ public final class VoiceRuntime {
         final VoiceUiState ui = new VoiceUiState();
         VoicePanel panel; View keyboardSurface; float surfaceAlpha; int surfaceAccessibility;
         FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
+        android.window.OnBackInvokedCallback voiceBack;
         ViewGroup root; ViewTreeObserver.OnGlobalLayoutListener layoutListener;
         int generation; boolean closed, reportedMissing; long lastScan;
         Session(InputMethodService ime) { this.ime=ime; }
@@ -169,7 +170,7 @@ public final class VoiceRuntime {
             panel=new VoicePanel(ime,background,accent);
             panel.setOnClickListener(v->toggle());
             panel.setOnLongClickListener(v->{cancel();return true;});
-            overlay=new FrameLayout(ime);
+            overlay=new VoiceOverlay(ime,this::cancel);
             overlay.setAccessibilityPaneTitle("Voice dictation");
             overlay.addView(panel,new FrameLayout.LayoutParams(-1,-1));
             closeButton=new CloseButton(ime,accent);
@@ -177,6 +178,12 @@ public final class VoiceRuntime {
             overlay.addView(closeButton,new FrameLayout.LayoutParams(Math.round(48*density),Math.round(48*density),Gravity.TOP|Gravity.RIGHT));
             windowState=new VoiceWindowState(ime.getWindow().getWindow());
             root.addView(overlay);positionPanel();
+            panel.setFocusableInTouchMode(true);panel.requestFocus();
+            if(android.os.Build.VERSION.SDK_INT>=33){
+                voiceBack=this::cancel;
+                ime.getWindow().getWindow().getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY,voiceBack);
+            }
             candidate.setAlpha(0);candidate.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             button.setVisibility(View.INVISIBLE);overlay.bringToFront();root.requestLayout();
             return true;
@@ -205,6 +212,9 @@ public final class VoiceRuntime {
             if(c.topMargin!=top || c.rightMargin!=right){c.topMargin=top;c.rightMargin=right;closeButton.setLayoutParams(c);}
         }
         void removePanel(){
+            if(voiceBack!=null && android.os.Build.VERSION.SDK_INT>=33){
+                ime.getWindow().getWindow().getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(voiceBack);voiceBack=null;
+            }
             if(panel!=null){panel.clear();panel=null;}
             if(overlay!=null){if(overlay.getParent() instanceof ViewGroup)((ViewGroup)overlay.getParent()).removeView(overlay);overlay=null;closeButton=null;}
             if(windowState!=null){windowState.restore();windowState=null;}
@@ -223,6 +233,17 @@ public final class VoiceRuntime {
     }
     private static final class MicButton extends View {
         MicButton(android.content.Context context){ super(context);setClickable(true);setFocusable(true);setContentDescription("Start OpenAI dictation"); }
+    }
+    private static final class VoiceOverlay extends FrameLayout {
+        final Runnable cancel;
+        VoiceOverlay(android.content.Context context,Runnable cancel){super(context);this.cancel=cancel;}
+        @Override public boolean dispatchKeyEvent(KeyEvent event){
+            if(event.getKeyCode()==KeyEvent.KEYCODE_BACK){
+                if(event.getAction()==KeyEvent.ACTION_UP && !event.isCanceled())cancel.run();
+                return true;
+            }
+            return super.dispatchKeyEvent(event);
+        }
     }
     private static final class CloseButton extends View {
         final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);final int color;

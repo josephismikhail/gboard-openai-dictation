@@ -14,6 +14,9 @@ public final class VoiceWindowChecks {
         WindowManager.LayoutParams original=new WindowManager.LayoutParams();original.copyFrom(window.getAttributes());
         VoiceWindowState state=new VoiceWindowState(window);
         if((window.getAttributes().flags&WindowManager.LayoutParams.FLAG_FULLSCREEN)==0)throw new AssertionError("Full-screen flag missing");
+        if((window.getAttributes().flags&WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)!=0
+            || (window.getAttributes().flags&WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM)==0)
+            throw new AssertionError("Voice window must hide editor handles without becoming an input target");
         state.restore();state.restore();
         WindowManager.LayoutParams restored=window.getAttributes();
         if(restored.flags!=original.flags || restored.layoutInDisplayCutoutMode!=original.layoutInDisplayCutoutMode)

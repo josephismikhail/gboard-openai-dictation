@@ -15,7 +15,9 @@ final class VoiceWindowState {
     private final boolean statusVisible;
     private boolean restored;
     private static final int FLAGS = WindowManager.LayoutParams.FLAG_FULLSCREEN
-        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN;
+        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
 
     VoiceWindowState(Window window) {
         this.window = window;
@@ -27,7 +29,11 @@ final class VoiceWindowState {
         fitTypes = Build.VERSION.SDK_INT >= 30 ? attrs.getFitInsetsTypes() : 0;
         WindowInsetsController controller = Build.VERSION.SDK_INT >= 30 ? window.getInsetsController() : null;
         barBehavior = controller == null ? 0 : controller.getSystemBarsBehavior();
-        attrs.flags |= FLAGS;
+        // Giving the voice surface window focus dismisses editor-owned selection handles,
+        // while ALT_FOCUSABLE_IM keeps this non-editor window from replacing the input target.
+        attrs.flags |= WindowManager.LayoutParams.FLAG_FULLSCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+            | WindowManager.LayoutParams.FLAG_ALT_FOCUSABLE_IM;
+        attrs.flags &= ~WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE;
         attrs.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         if (Build.VERSION.SDK_INT >= 30) attrs.setFitInsetsTypes(fitTypes & ~WindowInsets.Type.statusBars());
         window.setAttributes(attrs);
