@@ -43,10 +43,10 @@ public final class VoicePanelChecks {
         if(bitmap.getPixel(1,1)!=SCRIM)throw new AssertionError("Panel must retain the translucent recording scrim");
         bitmap.recycle();panel.clear();
         if(panel.getKeepScreenOn())throw new AssertionError("Keep-screen-on leaked");
-        checkSpeechContrast(context);checkProcessingHasNoSignal(context);checkScrimComposition(context);checkInsets();
+        checkSpeechContrast(context);checkProcessingShape(context);checkScrimComposition(context);checkInsets();
         for(int density:new int[]{160,320,480}){
             Configuration config=new Configuration(context.getResources().getConfiguration());config.densityDpi=density;
-            checkProcessingHasNoSignal(context.createConfigurationContext(config));
+            checkProcessingShape(context.createConfigurationContext(config));
             for(int[] size:new int[][]{{480,900},{900,480},{481,901}})
                 checkVerticalCenter(context.createConfigurationContext(config),size[0],size[1]);
         }
@@ -58,6 +58,7 @@ public final class VoicePanelChecks {
         panel.layout(0,0,width,height);panel.setPhase(VoiceUiState.Phase.LISTENING);
         for(int frame=0;frame<4;frame++){
             if(frame==1)panel.level(.45f);
+            if(frame==2)panel.setPhase(VoiceUiState.Phase.PROCESSING);
             panel.clock+=frame>=2?600:16;
             Bitmap bitmap=Bitmap.createBitmap(width,height,Bitmap.Config.ARGB_8888);panel.draw(new Canvas(bitmap));
             int top=height,bottom=-1;
@@ -85,15 +86,23 @@ public final class VoicePanelChecks {
         if(!speaking.getKeepScreenOn())throw new AssertionError("Silence must not finish recording");
         silent.recycle();active.recycle();paused.recycle();quiet.clear();speaking.clear();
     }
-    private static void checkProcessingHasNoSignal(Context context){
+    private static void checkProcessingShape(Context context){
         Panel panel=makePanel(context);panel.level(.45f);Bitmap spoken=render(panel);spoken.recycle();
         panel.setPhase(VoiceUiState.Phase.PROCESSING);panel.clock+=500;
         Bitmap first=render(panel);
-        if(signalHeight(first)!=0)throw new AssertionError("Processing must not leave a full-screen signal or shape");
+        int height=signalHeight(first),width=signalWidth(first);
+        float density=context.getResources().getDisplayMetrics().density;
+        if(height<Math.min(100*density,WIDTH*.35f) || height>Math.min(145*density,WIDTH*.65f)
+                || Math.abs(width-height)>WIDTH*.1f)throw new AssertionError("Processing shape should be large and rounded at this density");
+        if(first.getPixel(1,1)!=SCRIM)throw new AssertionError("Processing must preserve the translucent scrim");
         if(panel.getKeepScreenOn())throw new AssertionError("Processing must release keep-screen-on");
-        panel.clock+=800;Bitmap next=render(panel);
-        if(!first.sameAs(next))throw new AssertionError("Detached processing panel must not animate a shape");
-        next.recycle();
+        if(android.animation.ValueAnimator.areAnimatorsEnabled()){
+            panel.clock+=800;Bitmap next=render(panel);
+            int different=0;
+            for(int y=0;y<HEIGHT;y+=2)for(int x=0;x<WIDTH;x+=2)if(first.getPixel(x,y)!=next.getPixel(x,y))different++;
+            if(different<100)throw new AssertionError("Processing shape did not breathe or morph");
+            next.recycle();
+        }
         first.recycle();panel.clear();
     }
     private static void checkScrimComposition(Context context){
@@ -129,5 +138,9 @@ public final class VoicePanelChecks {
     private static int signalHeight(Bitmap image){
         int top=HEIGHT,bottom=-1;for(int y=0;y<HEIGHT;y++)if(Color.green(image.getPixel(WIDTH/2,y))>20){top=Math.min(top,y);bottom=y;}
         return bottom<0?0:bottom-top+1;
+    }
+    private static int signalWidth(Bitmap image){
+        int left=WIDTH,right=-1;for(int x=0;x<WIDTH;x++)if(Color.green(image.getPixel(x,CENTER_Y))>20){left=Math.min(left,x);right=x;}
+        return right<0?0:right-left+1;
     }
 }

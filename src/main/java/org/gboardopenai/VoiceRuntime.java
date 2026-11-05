@@ -92,7 +92,7 @@ public final class VoiceRuntime {
     }
     private static final class Session {
         final InputMethodService ime;
-        VoiceEngine engine; InputConnection editor; MicButton button; View nativeMic,processingMic;float nativeMicAlpha=1;
+        VoiceEngine engine; InputConnection editor; MicButton button; View nativeMic;
         DictationContext editorContext;
         InsertionAnchor insertionAnchor;boolean targetChanged;
         final VoiceUiState ui = new VoiceUiState();
@@ -151,7 +151,6 @@ public final class VoiceRuntime {
                 nativeMic=target;
             }
             nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            updateMic();
             FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(bounds.width(),bounds.height());
             p.leftMargin=bounds.left-root.getPaddingLeft();p.topMargin=bounds.top-root.getPaddingTop();p.gravity=Gravity.TOP|Gravity.LEFT;
             FrameLayout.LayoutParams old=(FrameLayout.LayoutParams)button.getLayoutParams();
@@ -258,25 +257,10 @@ public final class VoiceRuntime {
             FrameLayout.LayoutParams c=(FrameLayout.LayoutParams)closeButton.getLayoutParams();
             if(c.topMargin!=top || c.rightMargin!=right){c.topMargin=top;c.rightMargin=right;closeButton.setLayoutParams(c);}
         }
-        void showProcessing(){hidePanel();updateMic();}
-        void updateMic(){
-            boolean processing=ui.phase()==VoiceUiState.Phase.PROCESSING;
-            if(processing){
-                if(processingMic!=nativeMic){
-                    restoreProcessingMic();processingMic=nativeMic;
-                    if(processingMic!=null)nativeMicAlpha=processingMic.getAlpha();
-                }
-                if(processingMic!=null)processingMic.setAlpha(0);
-            }else restoreProcessingMic();
-            if(button!=null)button.setProcessing(processing);
-        }
-        void restoreProcessingMic(){
-            if(processingMic!=null){processingMic.setAlpha(nativeMicAlpha);processingMic=null;}
-        }
+        void showProcessing(){if(panel!=null)panel.setPhase(ui.phase());}
         void removePanel(){
             hidePanel();
             if(mediaPlayback!=null){mediaPlayback.close();mediaPlayback=null;}
-            updateMic();
         }
         void hidePanel(){
             if(voiceBack!=null && android.os.Build.VERSION.SDK_INT>=33){
@@ -298,7 +282,6 @@ public final class VoiceRuntime {
         }
         void removeButton(){
             removeObservers();
-            restoreProcessingMic();
             if(nativeMic!=null)nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
             if(button!=null && button.getParent() instanceof ViewGroup)((ViewGroup)button.getParent()).removeView(button);
             button=null;nativeMic=null;
@@ -306,25 +289,8 @@ public final class VoiceRuntime {
         void close(){closed=true;cancel();removeButton();root=null;}
     }
     private static final class MicButton extends View {
-        final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);boolean processing;
-        MicButton(android.content.Context context){ super(context);setClickable(true);setFocusable(true);setProcessing(false); }
-        void setProcessing(boolean value){
-            if(processing==value && getContentDescription()!=null)return;
-            processing=value;setContentDescription(value?"Processing dictation. Long press to cancel":"Start OpenAI dictation");
-            if(android.os.Build.VERSION.SDK_INT>=30)setStateDescription(value?"Processing":"Ready");
-            invalidate();
-        }
-        @Override protected void onDraw(Canvas canvas){
-            if(!processing)return;
-            boolean dark=(getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK)==android.content.res.Configuration.UI_MODE_NIGHT_YES;
-            paint.setColor(dark?Color.rgb(168,199,250):Color.rgb(26,115,232));
-            paint.setStyle(Paint.Style.STROKE);paint.setStrokeCap(Paint.Cap.ROUND);
-            paint.setStrokeWidth(2.5f*getResources().getDisplayMetrics().density);
-            float cx=getWidth()/2f,cy=getHeight()/2f,r=Math.min(getWidth(),getHeight())*.25f;
-            boolean animate=android.animation.ValueAnimator.areAnimatorsEnabled();
-            float start=animate?(android.os.SystemClock.uptimeMillis()%850)*360f/850:-90;
-            canvas.drawArc(cx-r,cy-r,cx+r,cy+r,start,265,false,paint);
-            if(animate && isAttachedToWindow() && isShown())postInvalidateOnAnimation();
+        MicButton(android.content.Context context){
+            super(context);setClickable(true);setFocusable(true);setContentDescription("Start OpenAI dictation");
         }
         @Override public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info){
             super.onInitializeAccessibilityNodeInfo(info);info.setClassName(android.widget.Button.class.getName());
