@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from build import reset_compiler_output
+from build import clean_apk_output, reset_compiler_output
 
 
 class CompilerOutputTests(unittest.TestCase):
@@ -34,6 +34,12 @@ class CompilerOutputTests(unittest.TestCase):
             result=reset_compiler_output(temporary)
             self.assertTrue(result.is_dir())
             self.assertEqual(result,reset_compiler_output(temporary))
+
+    def test_qa_build_does_not_retain_deleted_test_classes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            classes=Path(temporary)/'qa-classes';classes.mkdir()
+            (classes/'RetiredCheck.class').write_bytes(b'old')
+            self.assertEqual([],list(reset_compiler_output(temporary,'qa-classes').iterdir()))
 
     def test_rejects_file_at_output_path_without_deleting_it(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -81,5 +87,24 @@ class CompilerOutputTests(unittest.TestCase):
                 self.assertEqual(b'preserve',sentinel.read_bytes())
                 self.assertTrue(outside.is_dir())
 
+
+class ApkOutputTests(unittest.TestCase):
+    def test_removes_obsolete_apks_without_touching_current_or_private_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output=Path(temporary)/'output';output.mkdir()
+            for name in ('base.apk','base.apk.idsig','split_config.arm64.apk','retired.apk','retired.apk.idsig','notes.txt'):
+                (output/name).write_text(name)
+            self.assertEqual(output.resolve(),clean_apk_output(temporary,{'base.apk','split_config.arm64.apk'}))
+            self.assertEqual({'base.apk','base.apk.idsig','split_config.arm64.apk','notes.txt'},{item.name for item in output.iterdir()})
+
+    def test_rejects_redirected_output_before_deleting(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();output=root/'output';output.mkdir()
+            stale=output/'retired.apk';stale.write_bytes(b'preserve')
+            original=Path.resolve
+            def resolve(path,*args,**kwargs):return root/'outside' if path==output else original(path,*args,**kwargs)
+            with patch.object(Path,'resolve',resolve):
+                with self.assertRaises(ValueError):clean_apk_output(root,{'base.apk'})
+            self.assertEqual(b'preserve',stale.read_bytes())
 
 if __name__=='__main__':unittest.main()

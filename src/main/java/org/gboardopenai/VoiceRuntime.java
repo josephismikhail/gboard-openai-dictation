@@ -18,28 +18,8 @@ import java.util.WeakHashMap;
 public final class VoiceRuntime {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final WeakHashMap<InputMethodService, Session> SESSIONS = new WeakHashMap<>();
-    private static final MessagesHandoff MESSAGES_HANDOFF = new MessagesHandoff();
-    /** In-process entry only; the accessibility shortcut must originate in a current Messages composer. */
-    public static boolean requestMessagesDictation(MessagesHandoff.Target target){
-        if(Looper.myLooper()!=Looper.getMainLooper() || isVoiceUiVisible()){
-            if(target!=null)try{target.release();}catch(RuntimeException ignored){}
-            return false;
-        }
-        boolean accepted=MESSAGES_HANDOFF.request(target,android.os.SystemClock.elapsedRealtime());
-        if(accepted){
-            MAIN.postDelayed(()->MESSAGES_HANDOFF.expire(android.os.SystemClock.elapsedRealtime()),MessagesHandoff.TIMEOUT_MS);
-            for(Session session:SESSIONS.values())session.scanLater();
-        }
-        return accepted;
-    }
-    public static void cancelMessagesHandoff(){MESSAGES_HANDOFF.cancel();}
-    public static boolean isVoiceUiVisible(){
-        for(Session session:SESSIONS.values())if(!session.closed && (session.panel!=null || session.ui.phase()!=VoiceUiState.Phase.IDLE))return true;
-        return false;
-    }
     public static void attach(InputMethodService ime) {
         Runnable attach=() -> {
-            MessagesAccessibilityService.keyboardTransition();
             Session session=SESSIONS.get(ime);
             if(session==null) { session=new Session(ime); SESSIONS.put(ime, session); }
             // Install the transparent action target before the keyboard's first paint.
@@ -50,8 +30,6 @@ public final class VoiceRuntime {
     }
     public static void detach(InputMethodService ime) {
         Session session=SESSIONS.remove(ime); if(session!=null) session.close();
-        if(Looper.myLooper()==Looper.getMainLooper())MessagesAccessibilityService.keyboardTransition();
-        else MAIN.post(MessagesAccessibilityService::keyboardTransition);
     }
     /** Runs after Gboard computes its normal editor insets, including each early return. */
     public static void adjustInsets(InputMethodService ime, InputMethodService.Insets insets) {
@@ -157,11 +135,6 @@ public final class VoiceRuntime {
             if(old==null || old.width!=p.width || old.height!=p.height || old.leftMargin!=p.leftMargin || old.topMargin!=p.topMargin) button.setLayoutParams(p);
             if(panel!=null){positionPanel();button.setVisibility(View.INVISIBLE);overlay.bringToFront();}
             else {button.bringToFront();button.setVisibility(View.VISIBLE);}
-            android.view.inputmethod.EditorInfo info=ime.getCurrentInputEditorInfo();
-            if(MESSAGES_HANDOFF.consume(info==null?null:info.packageName,info==null?0:info.fieldId,
-                    !closed && ui.phase()==VoiceUiState.Phase.IDLE && ime.isInputViewShown()
-                    && ime.getCurrentInputConnection()!=null && nativeMic!=null,
-                    android.os.SystemClock.elapsedRealtime()))toggle();
         }
         View findMic(View v) {
             if(v==button || v==overlay || v.getVisibility()!=View.VISIBLE) return null;
@@ -234,7 +207,6 @@ public final class VoiceRuntime {
             }
             candidate.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             button.setVisibility(View.INVISIBLE);overlay.bringToFront();root.requestLayout();
-            MessagesAccessibilityService.refreshActive();
             // Hold transient audio focus through capture and processing. This asks
             // cooperative players to pause without changing the media volume.
             try{mediaPlayback=new MediaPlaybackGate(ime);}catch(RuntimeException ignored){mediaPlayback=null;}
@@ -262,7 +234,6 @@ public final class VoiceRuntime {
             if(keyboardSurface!=null){keyboardSurface.setAlpha(surfaceAlpha);keyboardSurface.setImportantForAccessibility(surfaceAccessibility);keyboardSurface=null;}
             if(button!=null)button.setVisibility(View.VISIBLE);
             if(root!=null)root.requestLayout();
-            MessagesAccessibilityService.refreshActive();
         }
         void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;editorContext=null;insertionAnchor=null;ui.reset();removePanel(); }
         void removeObservers(){

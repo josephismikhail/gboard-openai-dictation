@@ -26,7 +26,7 @@ public final class VoiceSettingsActivity extends Activity {
         scroll.requestApplyInsets();
         setTitle("OpenAI dictation");
         TextView heading=new TextView(this);heading.setText("OpenAI dictation");heading.setTextSize(24);content.addView(heading);
-        TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. With message context enabled, the whole current message is included so new words fit the text around them. No account or server is provided by this project.\n\nTap the keyboard microphone to start, then tap anywhere in the full-screen voice view to finish. Pauses do not end a recording. Use the close button or Back to cancel. Long-press the idle microphone to return here.");content.addView(info);
+        TextView info=new TextView(this);info.setText("Your API key is stored encrypted on this phone. Audio and text go directly to OpenAI. With message context enabled, the whole current message is included so new words fit the text around them. No account or server is provided by this project.\n\nTap the keyboard microphone to start, then tap anywhere in the full-screen voice view to finish. Pauses do not end a recording. Use Android Back to cancel. Long-press the idle microphone to return here.");content.addView(info);
         JSONObject existing;try{existing=VoiceConfig.load(this);}catch(Exception e){existing=new JSONObject();}
         Switch useContext=new Switch(this);useContext.setText("Use the whole message as cleanup context");
         useContext.setChecked(existing.optBoolean("useMessageContext",true));content.addView(useContext);
@@ -45,11 +45,6 @@ public final class VoiceSettingsActivity extends Activity {
             config.put("key",token);
             key.setText("");status.setText("API key saved on this phone");Toast.makeText(this,"Settings saved",Toast.LENGTH_SHORT).show();
         }catch(Exception e){status.setText("Could not save. Check the API key and try again.");}});
-        TextView messagesInfo=new TextView(this);
-        messagesInfo.setText("Optional: Messages dictation shortcut. Enable this accessibility service to start OpenAI dictation from Google Messages' existing voice-note button. Its appearance stays native, and the keyboard microphone also starts dictation. It reads Messages' on-screen controls locally, never sends a message, and does not save conversation text. The Send button is left alone.");
-        content.addView(messagesInfo);
-        Button messagesSettings=new Button(this);messagesSettings.setText("Set up Messages shortcut");content.addView(messagesSettings);
-        messagesSettings.setOnClickListener(v->startActivity(new android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)));
         TextView label=new TextView(this);label.setText("Try dictation");content.addView(label);
         EditText test=new EditText(this);test.setHint("Tap here, then use the keyboard microphone");test.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);test.setMinLines(3);test.setMaxLines(6);content.addView(test);
     }

@@ -4,14 +4,14 @@ from pathlib import Path
 import argparse,hashlib,json,os,re,secrets,shutil,subprocess,sys,urllib.request,zipfile
 from tools.binary_xml import patch,NEW
 from tools.smali_hooks import hook_void_entry,hook_void_returns
-from tools.accessibility_split import build_split
 
 ROOT=Path(__file__).resolve().parent
 
-def reset_compiler_output(work):
+def reset_compiler_output(work,name='classes'):
     """Replace only the private compiler output after resolving every delete target."""
     root=Path(work).resolve(strict=True)
-    classes=root/'classes'
+    if name not in ('classes','qa-classes'):raise ValueError('Unknown compiler output directory')
+    classes=root/name
     if classes.is_symlink() or classes.resolve()!=classes or classes.parent!=root:
         raise ValueError('Compiler output must be a plain classes directory inside the work directory')
     if classes.exists():
@@ -30,6 +30,22 @@ def reset_compiler_output(work):
         shutil.rmtree(classes)
     classes.mkdir()
     return classes
+
+
+def clean_apk_output(work,expected_names):
+    """Discard obsolete build APKs so a replacement install cannot retain removed features."""
+    root=Path(work).resolve(strict=True)
+    output=root/'output'
+    if output.is_symlink() or output.resolve()!=output:
+        raise ValueError('APK output must be a plain directory inside the work directory')
+    output.mkdir(exist_ok=True)
+    stale=[apk for pattern in ('*.apk','*.apk.idsig') for apk in output.glob(pattern)
+           if apk.name.removesuffix('.idsig') not in expected_names]
+    for apk in stale:
+        if apk.is_symlink() or apk.resolve()!=apk or not apk.is_file():
+            raise ValueError('APK output contains a redirected or invalid archive')
+    for apk in stale:apk.unlink()
+    return output
 
 
 def main():
@@ -137,12 +153,11 @@ def main():
         s=s[:m.start()]+m.group(1)+body+m.group(3)+s[m.end():];f.write_text(s)
     changed_dex.add(f.relative_to(decoded).parts[0])
     basebuilt=work/'reassembled.apk';run([exe('java'),'-jar',apktool,'b',decoded,'-o',basebuilt])
-    messages_split,messages_resource=build_split(tool('aapt2'),android,stock/'base.apk',work)
     keystore=work/'signing.p12';passwordfile=work/'signing-password.txt'
     if not keystore.exists():passwordfile.write_text(secrets.token_urlsafe(40))
     os.environ['GBOARD_SIGNING_PASSWORD']=passwordfile.read_text().strip()
     if not keystore.exists():run([exe('keytool'),'-genkeypair','-storetype','PKCS12','-keystore',keystore,'-alias','gboard-openai','-keyalg','RSA','-keysize','3072','-validity','3650','-storepass:env','GBOARD_SIGNING_PASSWORD','-dname','CN=Local Gboard OpenAI Build'])
-    output=work/'output';output.mkdir(exist_ok=True)
+    output=clean_apk_output(work,{source.name for source in stock.glob('*.apk')})
     with zipfile.ZipFile(basebuilt) as assembled:
         mapping={('classes.dex' if name=='smali' else name.replace('smali_','')+'.dex') for name in changed_dex}
         for source in sorted(stock.glob('*.apk')):
@@ -152,7 +167,7 @@ def main():
                     if info.filename.startswith('META-INF/') and info.filename.upper().endswith(('.SF','.RSA','.DSA','.EC','MANIFEST.MF')):continue
                     data=original.read(info.filename)
                     if source.name=='base.apk' and info.filename in mapping:data=assembled.read(info.filename)
-                    elif info.filename=='AndroidManifest.xml':data=patch(data,source.name=='base.apk',messages_resource if source.name=='base.apk' else None)
+                    elif info.filename=='AndroidManifest.xml':data=patch(data,source.name=='base.apk')
                     elif info.filename.startswith('res/') and info.filename.endswith('.xml'):data=patch(data)
                     target.writestr(info,data)
                 if source.name=='base.apk':
@@ -161,10 +176,6 @@ def main():
             aligned=work/(source.stem+'-aligned.apk');run([tool('zipalign'),'-P','16','-f','4',unsigned,aligned])
             run([tool('apksigner'),'sign','--ks',keystore,'--ks-key-alias','gboard-openai','--ks-pass','env:GBOARD_SIGNING_PASSWORD','--out',output/source.name,aligned])
             run([tool('apksigner'),'verify',output/source.name])
-    messages_aligned=work/'messages-resources'/'aligned.apk'
-    run([tool('zipalign'),'-P','16','-f','4',messages_split,messages_aligned])
-    run([tool('apksigner'),'sign','--ks',keystore,'--ks-key-alias','gboard-openai','--ks-pass','env:GBOARD_SIGNING_PASSWORD','--out',output/'split_openai_messages.apk',messages_aligned])
-    run([tool('apksigner'),'verify',output/'split_openai_messages.apk'])
     print('Built signed APK set in',output)
 
 if __name__=='__main__':main()
