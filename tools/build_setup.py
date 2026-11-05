@@ -6,12 +6,12 @@ root=Path(__file__).resolve().parents[1];work=a.work.resolve();sdk=a.sdk.resolve
 if work.is_relative_to(root):p.error('Use a private work directory outside this repository')
 def run(cmd):subprocess.run(list(map(str,cmd)),check=True)
 classes=work/'qa-classes';classes.mkdir(exist_ok=True)
-run([java/'javac.exe','--release','11','-encoding','UTF-8','-cp',os.pathsep.join(map(str,[android,work/'classes'])),'-d',classes,*sorted((root/'tests/android').glob('*.java'))])
+run([java/'javac.exe','--release','11','-encoding','UTF-8','-cp',os.pathsep.join(map(str,[android,work/'extension.jar'])),'-d',classes,*sorted((root/'tests/android').glob('*.java'))])
 jar=work/'qa.jar'
 with zipfile.ZipFile(jar,'w') as z:
     for f in classes.rglob('*.class'):z.write(f,f.relative_to(classes).as_posix())
-dex=work/'qa-dex';dex.mkdir(exist_ok=True);run([tools/'d8.bat','--release','--min-api','29','--lib',android,'--classpath',work/'helpers.jar','--output',dex,jar])
-manifest=work/'qa-manifest.xml';manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.gboardopenai.test"><uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/><application android:label="Local dictation QA"><activity android:name="org.gboardopenai.test.VoiceTestActivity" android:exported="true"/><activity android:name="org.gboardopenai.test.FullscreenVoicePreviewActivity" android:exported="true"/></application><instrumentation android:name="org.gboardopenai.test.SetupInstrumentation" android:targetPackage="org.gboardopenai.keyboard"/></manifest>')
+dex=work/'qa-dex';dex.mkdir(exist_ok=True);run([tools/'d8.bat','--release','--min-api','29','--lib',android,'--classpath',work/'extension.jar','--output',dex,jar])
+manifest=work/'qa-manifest.xml';manifest.write_text('<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.gboardopenai.test"><uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/><uses-permission android:name="android.permission.INTERNET"/><application android:label="Local dictation QA"><activity android:name="org.gboardopenai.test.VoiceTestActivity" android:exported="true"/><activity android:name="org.gboardopenai.test.FullscreenVoicePreviewActivity" android:exported="true"/></application><instrumentation android:name="org.gboardopenai.test.SetupInstrumentation" android:targetPackage="org.gboardopenai.keyboard"/></manifest>')
 unsigned=work/'qa-unsigned.apk';run([tools/'aapt2.exe','link','-I',android,'--manifest',manifest,'-o',unsigned])
 with zipfile.ZipFile(unsigned,'a') as z:z.write(dex/'classes.dex','classes.dex')
 aligned=work/'qa-aligned.apk';run([tools/'zipalign.exe','-f','4',unsigned,aligned])

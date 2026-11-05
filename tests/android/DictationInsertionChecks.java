@@ -39,6 +39,11 @@ public final class DictationInsertionChecks {
         field.setText("");field.setSelection(0);
         insert(editor,info,"(");insert(editor,info,"hello");expect(field,"(hello");
 
+        field.setText("- Apples\n- Pears");field.setSelection(field.length());
+        insert(editor,info,"\n- Bananas");expect(field,"- Apples\n- Pears\n- Bananas");
+        field.setText("- Apples\n- Pears");field.setSelection("- Apples\n".length());
+        insert(editor,info,"- Bananas\n");expect(field,"- Apples\n- Bananas\n- Pears");
+
         for(int type:new int[]{InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
                 InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI,
                 InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD,

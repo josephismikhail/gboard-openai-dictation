@@ -61,6 +61,7 @@ public final class VoiceRuntime {
     private static final class Session {
         final InputMethodService ime;
         VoiceEngine engine; InputConnection editor; MicButton button; View nativeMic;
+        DictationContext editorContext;
         final VoiceUiState ui = new VoiceUiState();
         VoicePanel panel; View keyboardSurface; float surfaceAlpha; int surfaceAccessibility;
         FrameLayout overlay; CloseButton closeButton; VoiceWindowState windowState;
@@ -128,8 +129,10 @@ public final class VoiceRuntime {
             if(ui.stop()) { if(panel!=null)panel.setPhase(ui.phase()); if(engine!=null)engine.stop(); return; }
             if(ui.phase()!=VoiceUiState.Phase.IDLE)return;
             editor=ime.getCurrentInputConnection(); if(editor==null)return;
-            if(!showPanel()){editor=null;Toast.makeText(ime,"Could not open the voice panel. Please reopen the keyboard.",Toast.LENGTH_LONG).show();return;}
-            editor.finishComposingText(); int current=++generation;
+            editor.finishComposingText();
+            editorContext=EditorContext.capture(editor,ime.getCurrentInputEditorInfo());
+            if(!showPanel()){editor=null;editorContext=null;Toast.makeText(ime,"Could not open the voice panel. Please reopen the keyboard.",Toast.LENGTH_LONG).show();return;}
+            int current=++generation;
             ui.begin();panel.setPhase(ui.phase());
             engine=new VoiceEngine(ime,new VoiceEngine.Listener(){
                 public void recording(){ MAIN.post(()->{if(current==generation && !closed){ui.recording();if(panel!=null)panel.setPhase(ui.phase());}}); }
@@ -137,16 +140,18 @@ public final class VoiceRuntime {
                 public void result(String text){ MAIN.post(()->{
                     if(current!=generation || closed)return;
                     if(editor==ime.getCurrentInputConnection() && text!=null && !text.isEmpty()){
-                        if(!DictationInsertion.commit(editor,text,ime.getCurrentInputEditorInfo()))Toast.makeText(ime,"Could not insert dictation into this text field.",Toast.LENGTH_LONG).show();
+                        if(editorContext!=null && !editorContext.sameTarget(EditorContext.capture(editor,ime.getCurrentInputEditorInfo())))
+                            Toast.makeText(ime,"The message changed while dictating. Please try again.",Toast.LENGTH_LONG).show();
+                        else if(!DictationInsertion.commit(editor,text,ime.getCurrentInputEditorInfo()))Toast.makeText(ime,"Could not insert dictation into this text field.",Toast.LENGTH_LONG).show();
                     }
-                    editor=null;engine=null;ui.reset();removePanel();
+                    editor=null;editorContext=null;engine=null;ui.reset();removePanel();
                 }); }
                 public void error(String message){ MAIN.post(()->{
                     if(current!=generation || closed)return;
                     Toast.makeText(ime,message,Toast.LENGTH_LONG).show();
                     if(!message.startsWith("Cleanup ")){cancel();}
                 }); }
-            });
+            },editorContext);
             engine.start();
         }
         boolean showPanel(){
@@ -207,7 +212,7 @@ public final class VoiceRuntime {
             if(button!=null)button.setVisibility(View.VISIBLE);
             if(root!=null)root.requestLayout();
         }
-        void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;ui.reset();removePanel(); }
+        void cancel(){ generation++;if(engine!=null)engine.cancel();engine=null;editor=null;editorContext=null;ui.reset();removePanel(); }
         void removeButton(){
             if(nativeMic!=null){nativeMic.setAlpha(1f);nativeMic.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);}
             if(root!=null && layoutListener!=null && root.getViewTreeObserver().isAlive())root.getViewTreeObserver().removeOnGlobalLayoutListener(layoutListener);
