@@ -6,7 +6,7 @@ dictation and cleanup to a locally built copy of Google's Gboard.
 ## The problem it solves
 
 Keep Gboard's familiar keyboard, themes, layouts, and normal settings, while using
-its microphone as a predictable push-to-talk control:
+its microphone as a predictable manual start/stop control:
 
 1. Tap the microphone to start recording.
 2. Speak naturally. Pauses do not finish the recording.
@@ -21,6 +21,10 @@ the new text; the surrounding message is not rewritten. Local insertion adds
 boundary spaces only where adjacent text needs them, reuses existing spaces, and
 does not append a trailing space at the end of the field. Email, URL, password and
 numeric fields keep the exact result and are excluded from message-context capture.
+
+Place the cursor to insert new words, or select existing words before dictating
+to replace them. Consecutive dictations fit the text on either side of the cursor
+without leaving an automatic trailing space.
 
 This project does not add PixelBoard's visual changes, feature-unlocking options,
 or update service. It is an independent repository, not a fork of PixelBoard.
@@ -65,6 +69,17 @@ API usage is billed to **your own OpenAI API account**. A ChatGPT subscription
 does not automatically authenticate this app. Any linked promotional API credits
 are subject to their own eligibility and expiry rules.
 
+## Getting started
+
+1. Build and install your own Gboard APK set using the prerequisites and commands
+   in [DEVELOPMENT.md](DEVELOPMENT.md#build-and-install).
+2. Select **Gboard + OpenAI** as your keyboard and grant microphone permission.
+3. Long-press the keyboard microphone, enter your own OpenAI API key, and choose
+   **Save on this phone**. The settings screen includes a field for trying dictation.
+
+The optional Messages shortcut is enabled separately; the regular keyboard
+microphone works without it.
+
 ## Bring your own API key
 
 After installing and selecting the keyboard, **long-press its idle microphone**
@@ -93,6 +108,8 @@ breathing rounded shape until the result is inserted and the regular keyboard
 returns. This animation indicates activity, not estimated progress. The view
 follows the keyboard background with a contrasting neutral signal and adds no
 routine toasts. Use the close button, Back, or a long press to cancel.
+Both the recording waveform and the processing shape are centered horizontally
+and vertically in the full-screen view.
 Leaving the input field also cancels and restores
 the keyboard. A ten-minute recording limit prevents an accidentally forgotten
 microphone from running indefinitely. System-disabled animations are respected.
@@ -110,6 +127,10 @@ Long-press the keyboard microphone to open dictation settings, then choose **Set
 
 In a supported Google Messages conversation with an empty draft, tap the existing gray waveform button to open the full-screen OpenAI dictation flow directly. The keyboard may appear briefly during the handoff. The keyboard's normal microphone also starts dictation; no button positions or icons are swapped. Once Messages replaces its voice-note button with Send, that button is left alone.
 
+Both entry points produce editable text; this shortcut does not create or send
+voice-note attachments. Use the keyboard microphone to add dictation to a draft
+that already contains text.
+
 Messages renders its own button, including its animation as the keyboard opens and closes. A transparent touch layer changes only its tap action. Taps are checked against the current control and conversation at both press and release; a stale hit area, a drag, or multiple fingers cannot trigger dictation. Messages search and unsupported fields keep normal keyboard dictation.
 
 This is a Messages-specific shortcut layer, not a modification of Google Messages. It never presses Send. It requires the observed English recorder label and identifiable conversation controls; unknown layouts keep their normal behavior. The accessibility service inspects Messages controls, the current draft and conversation header locally to validate the target. It does not save them. The existing OpenAI API key and dictation data handling remain the same. Disable the service in Android accessibility settings to restore the normal button behavior.
@@ -124,6 +145,11 @@ Current target: **Gboard 18.5.6.993608717, arm64**, including its installed spli
 The on-phone microphone integration is currently validated with the English
 Gboard interface; other interface languages have not been validated.
 Instructions and test commands are in [DEVELOPMENT.md](DEVELOPMENT.md).
+
+Feature PRs document [full-screen dictation (#2)](https://github.com/josephismikhail/gboard-openai-dictation/pull/2),
+[contextual cleanup, spacing, and selection handling (#3)](https://github.com/josephismikhail/gboard-openai-dictation/pull/3),
+[centered voice animations (#4)](https://github.com/josephismikhail/gboard-openai-dictation/pull/4),
+and [the native Messages entry point (#5)](https://github.com/josephismikhail/gboard-openai-dictation/pull/5).
 
 ## License and attribution
 
