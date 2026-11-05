@@ -23,7 +23,10 @@ public final class SetupInstrumentation extends Instrumentation {
             String action=arguments.getString("action", "verify");
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);
             String alias="gboard-openai-migration";
-            if("messagesInspect".equals(action)){
+            if("messagesTransitionTest".equals(action)){
+                Thread.sleep(Math.min(10000,Math.max(0,Integer.parseInt(arguments.getString("delayMs","0")))));
+                result.putString("messagesTransitionMetrics",MessagesTransitionChecks.run(this).toString());
+            } else if("messagesInspect".equals(action)){
                 final JSONObject[] state={null};final Throwable[] error={null};
                 runOnMainSync(()->{try{state[0]=MessagesIntegrationChecks.inspect();}catch(Throwable failure){error[0]=failure;}});
                 if(error[0]!=null)throw new AssertionError(error[0]);
