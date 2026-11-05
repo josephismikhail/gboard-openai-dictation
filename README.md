@@ -104,6 +104,14 @@ touch-region and focus changes are restored when dictation ends. While recording
 or processing, the voice window takes focus so the editor's selection handles
 cannot float above it; the selected range is preserved for replacement or cancel.
 
+## Optional Google Messages shortcut
+
+Long-press the keyboard microphone to open dictation settings, then choose **Set up Messages shortcut**. Enable **Messages dictation shortcut** in Android accessibility settings. This integration is optional and disabled until you enable it.
+
+In a supported Google Messages conversation with an empty draft, a dictation microphone covers the native voice-note button. Tap it to open the existing full-screen dictation flow directly; the keyboard may appear briefly during the handoff. With the keyboard open, its former microphone position opens Messages' native voice-note recorder instead. Once Messages replaces its recorder with Send, the overlay disappears and the keyboard returns to normal dictation.
+
+This is a Messages-specific shortcut layer, not a modification of Google Messages. It never presses Send. It requires the observed English recorder label and identifiable conversation controls; unknown layouts keep their normal behavior. The accessibility service inspects Messages controls, the current draft and conversation header locally to validate the target. It does not save them. The existing OpenAI API key and dictation data handling remain the same. Disable the service in Android accessibility settings to restore the normal button behavior.
+
 ## Development status
 
 Implementation and validation are maintained on feature branches and reviewed

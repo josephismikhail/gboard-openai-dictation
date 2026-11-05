@@ -32,3 +32,11 @@ device. Obtain the base APK set from a source you trust.
 The patch deliberately supports a specific tested version. Do not broaden the
 version check without reviewing the bytecode targets and testing on a device.
 Report issues without including keys, transcripts, or private device data.
+
+## Optional Messages integration
+
+The Messages shortcut is an opt-in accessibility service. Its Android capability permits reading window content; its configured event scope and implementation target Google Messages. It reads the visible composer, recorder controls and conversation header only to validate the intended editor. These values are ephemeral and never logged or saved. A short one-use request must still match the conversation, composer, draft and known selection before the keyboard starts dictation.
+
+The service never invokes Send and never identifies the recorder by coordinates alone. Missing, disabled, hidden, ambiguous or unrecognized controls disable the shortcut. The keyboard action invokes the native recorder only after a fresh check. Disabling the service cancels pending requests and removes its overlay. No exported recording command or new server is added.
+
+The service declaration is protected by Android's BIND_ACCESSIBILITY_SERVICE permission. A resource-only split supplies its metadata within the same app; Google's original resource tables and IDs are preserved. All locally installed splits must be kept together.

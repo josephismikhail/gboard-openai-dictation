@@ -148,3 +148,11 @@ preview labels distinguish it from real dictation.
 
 Do not add telemetry, an update service, or a hosted proxy. Do not publish a
 Google-derived APK in releases. Public CI tests source and mock services only.
+
+## Messages shortcut validation
+
+The build adds `split_openai_messages.apk`, containing only the optional service's XML metadata and description. Install it together with all other output APKs; `install.py` already includes it. Existing Google resource tables remain untouched.
+
+After building/installing the QA harness, run `adb shell am instrument -w -e action messagesMetadataTest org.gboardopenai.test/.SetupInstrumentation`. This verifies that Android resolves the protected service declaration, description and Messages-only event configuration without enabling the service. Restore the selected keyboard after instrumentation.
+
+JVM tests reject Send/recorder ambiguity, unknown controls, changed conversations, changed drafts or selections, wrong apps, expired requests and duplicate taps. Device validation requires enabling the optional service manually: check hidden-keyboard start, the native recorder shortcut, Send preservation after insertion/typing, cancellation, app switching and service disablement. Use synthetic dictation only; never send a message during validation.
